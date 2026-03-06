@@ -1,0 +1,20 @@
+{
+  "name": "cursor-chat-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to browse and export Cursor IDE chat history",
+  "main": "index.js",
+  "bin": {
+    "cursor-chat": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["cursor", "chat", "cli"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3"
+  }
+}

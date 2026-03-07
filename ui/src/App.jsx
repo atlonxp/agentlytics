@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { Activity, BarChart3, GitCompare, MessageSquare, FolderOpen, Sun, Moon, RefreshCw, AlertTriangle, Github, Terminal, Database } from 'lucide-react'
 import { fetchOverview, refetchAgents } from './lib/api'
@@ -9,16 +9,36 @@ import DeepAnalysis from './pages/DeepAnalysis'
 import Compare from './pages/Compare'
 import ChatDetail from './pages/ChatDetail'
 import Projects from './pages/Projects'
+import ProjectDetail from './pages/ProjectDetail'
 import SqlViewer from './pages/SqlViewer'
 
 export default function App() {
   const [overview, setOverview] = useState(null)
   const [refetchState, setRefetchState] = useState(null) // null | { scanned, total }
+  const [live, setLive] = useState(false)
+  const liveRef = useRef(null)
   const { dark, toggle } = useTheme()
 
-  useEffect(() => {
+  const refreshOverview = useCallback(() => {
     fetchOverview().then(setOverview)
   }, [])
+
+  useEffect(() => {
+    refreshOverview()
+  }, [])
+
+  // Live mode: refetch overview every 60s
+  useEffect(() => {
+    if (live) {
+      liveRef.current = setInterval(() => {
+        refreshOverview()
+      }, 60000)
+    } else {
+      if (liveRef.current) clearInterval(liveRef.current)
+      liveRef.current = null
+    }
+    return () => { if (liveRef.current) clearInterval(liveRef.current) }
+  }, [live, refreshOverview])
 
   const handleRefetch = async () => {
     setRefetchState({ scanned: 0, total: 0 })
@@ -62,6 +82,22 @@ export default function App() {
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <button
+            onClick={() => setLive(!live)}
+            className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] transition"
+            style={{
+              color: live ? '#22c55e' : 'var(--c-text3)',
+              border: live ? '1px solid rgba(34,197,94,0.3)' : '1px solid var(--c-border)',
+              background: live ? 'rgba(34,197,94,0.08)' : 'transparent',
+            }}
+            title={live ? 'Disable live refresh' : 'Enable live refresh (every 60s)'}
+          >
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${live ? 'pulse-dot' : ''}`}
+              style={{ background: live ? '#22c55e' : 'var(--c-text3)' }}
+            />
+            Live
+          </button>
+          <button
             onClick={handleRefetch}
             disabled={!!refetchState}
             className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition hover:bg-[var(--c-card)]"
@@ -98,6 +134,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard overview={overview} />} />
           <Route path="/projects" element={<Projects overview={overview} />} />
+          <Route path="/projects/detail" element={<ProjectDetail />} />
           <Route path="/sessions" element={<Sessions overview={overview} />} />
           {/* ChatDetail is now a sidebar in Sessions */}
           <Route path="/analysis" element={<DeepAnalysis overview={overview} />} />

@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/agentlytics"><img src="https://img.shields.io/npm/v/agentlytics?color=6366f1&label=npm" alt="npm"></a>
   <a href="#supported-editors"><img src="https://img.shields.io/badge/editors-14-818cf8" alt="editors"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen" alt="node"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520.19%20%7C%20%E2%89%A522.12-brightgreen" alt="node"></a>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ Agentlytics reads local chat history from every major AI coding assistant and pr
 npx agentlytics
 ```
 
-Opens at **http://localhost:4637**. Requires Node.js ≥ 18, macOS.
+Opens at **http://localhost:4637**. Requires Node.js ≥ 20.19 or ≥ 22.12, macOS.
 
 To only build the cache database without starting the server:
 

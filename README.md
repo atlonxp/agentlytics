@@ -1,4 +1,4 @@
-# Agentlytics
+# npx agentlytics
 
 **Comprehensive analytics dashboard for your AI coding agents.**
 

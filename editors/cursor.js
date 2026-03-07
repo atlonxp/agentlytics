@@ -2,11 +2,13 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { getAppDataPath } = require('./base');
 
 const HOME = os.homedir();
 const CURSOR_CHATS_DIR = path.join(HOME, '.cursor', 'chats');
-const WORKSPACE_STORAGE_DIR = path.join(HOME, 'Library', 'Application Support', 'Cursor', 'User', 'workspaceStorage');
-const GLOBAL_STORAGE_DB = path.join(HOME, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
+const CURSOR_USER_DIR = path.join(getAppDataPath('Cursor'), 'User');
+const WORKSPACE_STORAGE_DIR = path.join(CURSOR_USER_DIR, 'workspaceStorage');
+const GLOBAL_STORAGE_DB = path.join(CURSOR_USER_DIR, 'globalStorage', 'state.vscdb');
 
 // ============================================================
 // Source 1: ~/.cursor/chats/<hash>/<chatId>/store.db (agent KV)

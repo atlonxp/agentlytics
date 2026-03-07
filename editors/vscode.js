@@ -1,18 +1,17 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-
-const HOME = os.homedir();
+const { getAppDataPath } = require('./base');
 
 // VS Code variants: stable and insiders
 const VARIANTS = [
   {
     id: 'vscode',
-    appSupport: path.join(HOME, 'Library', 'Application Support', 'Code'),
+    appSupport: getAppDataPath('Code'),
   },
   {
     id: 'vscode-insiders',
-    appSupport: path.join(HOME, 'Library', 'Application Support', 'Code - Insiders'),
+    appSupport: getAppDataPath('Code - Insiders'),
   },
 ];
 

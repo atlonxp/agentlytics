@@ -2,9 +2,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
+const { getAppDataPath } = require('./base');
 
-const HOME = os.homedir();
-const THREADS_DB = path.join(HOME, 'Library', 'Application Support', 'Zed', 'threads', 'threads.db');
+const THREADS_DB = path.join(getAppDataPath('Zed'), 'threads', 'threads.db');
 
 // ============================================================
 // Decompress zstd blob via CLI

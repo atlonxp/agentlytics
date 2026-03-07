@@ -94,7 +94,7 @@ console.log(chalk.dim('  Initializing cache database...'));
 cache.initDb();
 
 // Scan all editors and populate cache
-console.log(chalk.dim('  Scanning editors: Cursor, Windsurf, Claude Code, VS Code, Zed, Antigravity, OpenCode, Gemini CLI, Copilot CLI, Cursor Agent'));
+console.log(chalk.dim('  Scanning editors: Cursor, Windsurf, Claude Code, VS Code, Zed, Antigravity, OpenCode, Codex, Gemini CLI, Copilot CLI, Cursor Agent'));
 const startTime = Date.now();
 const result = cache.scanAll((progress) => {
   process.stdout.write(chalk.dim(`\r  Scanning: ${progress.scanned}/${progress.total} chats (${progress.analyzed} analyzed, ${progress.skipped} cached)`));

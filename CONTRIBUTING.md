@@ -131,6 +131,22 @@ Reads from `~/.claude/projects/<encoded-path>/`:
 - Individual `.jsonl` session files — each line is a JSON message with `type`, `role`, `content`, `model`, `usage`
 - Tool calls extracted from `tool_use` content blocks and `tool_result` messages
 
+### Codex
+
+Reads from `${CODEX_HOME:-~/.codex}/sessions/**/*.jsonl`:
+- `session_meta` — session metadata including `id`, `cwd`, raw `source`, `originator`, and `cli_version`
+- `turn_context` — per-turn state such as the current `model`
+- `response_item` — visible transcript items for user/assistant messages, reasoning summaries, and tool calls
+- `event_msg` where `payload.type === "token_count"` — token usage deltas or cumulative totals
+
+Adapter behavior:
+- Titles come from the first meaningful user prompt, skipping Codex bootstrap wrappers like `<user_instructions>` and `<environment_context>`
+- Reasoning summaries render as `[thinking] ...`; encrypted reasoning is ignored
+- `function_call`, `custom_tool_call`, and `web_search_call` become visible `[tool-call: ...]` transcript lines and populate `_toolCalls` analytics
+- `function_call_output` and `custom_tool_call_output` become condensed `[tool-result: ...]` transcript lines
+- Token usage prefers `last_token_usage`; when only `total_token_usage` exists, the adapter diffs against the previous cumulative totals
+- Models are carried forward from the latest `turn_context`; if none is available, the session still ingests but leaves `_model` unset
+
 ### VS Code / VS Code Insiders
 
 Reads from `~/Library/Application Support/{Code,Code - Insiders}/User/`:

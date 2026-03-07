@@ -106,6 +106,9 @@ const insertMsg = () => db.prepare(`
   INSERT INTO messages (chat_id, seq, role, content, model, input_tokens, output_tokens)
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
+const updateChatBubbleCount = () => db.prepare(`
+  UPDATE chats SET bubble_count = ? WHERE id = ?
+`);
 
 function analyzeAndStore(chat) {
   if (chat.encrypted) return;
@@ -127,6 +130,7 @@ function analyzeAndStore(chat) {
   delTc.run(chat.composerId);
 
   const ins = insertMsg();
+  const updBubbleCount = updateChatBubbleCount();
   const insTc = db.prepare('INSERT INTO tool_calls (chat_id, tool_name, args_json, source, folder, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
   const chatTs = chat.lastUpdatedAt || chat.createdAt || null;
 
@@ -174,6 +178,8 @@ function analyzeAndStore(chat) {
     ins.run(chat.composerId, seq++, msg.role, storedContent, msg._model || null, msg._inputTokens || null, msg._outputTokens || null);
   }
 
+  updBubbleCount.run(messages.length, chat.composerId);
+
   const insStat = insertStat();
   insStat.run(
     chat.composerId, stats.total, stats.user, stats.assistant, stats.tool, stats.system,
@@ -205,7 +211,7 @@ function scanAll(onProgress) {
         chat.composerId, chat.source, chat.name || null, chat.mode || null,
         chat.folder || null, chat.createdAt || null, chat.lastUpdatedAt || null,
         chat.encrypted ? 1 : 0, chat.bubbleCount || 0,
-        JSON.stringify({ _type: chat._type, _dbPath: chat._dbPath, _filePath: chat._filePath, _port: chat._port, _csrf: chat._csrf, _https: chat._https, _rootBlobId: chat._rootBlobId, _dataType: chat._dataType })
+        JSON.stringify({ _type: chat._type, _dbPath: chat._dbPath, _filePath: chat._filePath, _port: chat._port, _csrf: chat._csrf, _https: chat._https, _rootBlobId: chat._rootBlobId, _dataType: chat._dataType, _rawSource: chat._rawSource, _originator: chat._originator, _cliVersion: chat._cliVersion, _modelProvider: chat._modelProvider })
       );
     }
   });
@@ -585,7 +591,7 @@ async function scanAllAsync(onProgress) {
         chat.composerId, chat.source, chat.name || null, chat.mode || null,
         chat.folder || null, chat.createdAt || null, chat.lastUpdatedAt || null,
         chat.encrypted ? 1 : 0, chat.bubbleCount || 0,
-        JSON.stringify({ _type: chat._type, _dbPath: chat._dbPath, _filePath: chat._filePath, _port: chat._port, _csrf: chat._csrf, _https: chat._https, _rootBlobId: chat._rootBlobId, _dataType: chat._dataType })
+        JSON.stringify({ _type: chat._type, _dbPath: chat._dbPath, _filePath: chat._filePath, _port: chat._port, _csrf: chat._csrf, _https: chat._https, _rootBlobId: chat._rootBlobId, _dataType: chat._dataType, _rawSource: chat._rawSource, _originator: chat._originator, _cliVersion: chat._cliVersion, _modelProvider: chat._modelProvider })
       );
     }
   });

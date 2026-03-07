@@ -23,7 +23,10 @@
   "scripts": {
     "start": "node index.js",
     "build": "cd ui && npm install && npm run build",
-    "dev": "cd ui && npm run dev"
+    "dev": "concurrently -k -n backend,frontend -c green,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "node index.js",
+    "dev:frontend": "cd ui && npm run dev",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "cursor",
@@ -34,6 +37,7 @@
     "zed",
     "antigravity",
     "opencode",
+    "codex",
     "analytics",
     "ai",
     "agent"
@@ -48,6 +52,7 @@
     "better-sqlite3": "^12.6.2",
     "chalk": "^4.1.2",
     "commander": "^14.0.3",
+    "concurrently": "^9.2.1",
     "express": "^4.22.1",
     "open": "^8.4.2"
   }

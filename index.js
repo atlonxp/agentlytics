@@ -9,17 +9,19 @@ const { execSync } = require('child_process');
 const HOME = os.homedir();
 const PORT = process.env.PORT || 4637;
 const noCache = process.argv.includes('--no-cache');
+const collectOnly = process.argv.includes('--collect');
 
 console.log('');
 console.log(chalk.bold('  ⚡ Agentlytics'));
 console.log(chalk.dim('  Comprehensive analytics for your AI coding agents'));
+if (collectOnly) console.log(chalk.cyan('  ⟳ Collect-only mode (no server)'));
 console.log('');
 
 // ── Build UI if not already built ──────────────────────────
 const publicIndex = path.join(__dirname, 'public', 'index.html');
 const uiDir = path.join(__dirname, 'ui');
 
-if (!fs.existsSync(publicIndex) && fs.existsSync(uiDir)) {
+if (!collectOnly && !fs.existsSync(publicIndex) && fs.existsSync(uiDir)) {
   console.log(chalk.cyan('  ⟳ Building dashboard UI (first run)...'));
   try {
     const uiModules = path.join(uiDir, 'node_modules');
@@ -37,7 +39,7 @@ if (!fs.existsSync(publicIndex) && fs.existsSync(uiDir)) {
   console.log('');
 }
 
-if (!fs.existsSync(publicIndex)) {
+if (!collectOnly && !fs.existsSync(publicIndex)) {
   console.error(chalk.red('  ✗ No built UI found at public/index.html'));
   console.error(chalk.dim('    Run: cd ui && npm install && npm run build'));
   process.exit(1);
@@ -103,6 +105,14 @@ const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 console.log('');
 console.log(chalk.green(`  ✓ Cache ready: ${result.total} chats, ${result.analyzed} analyzed, ${result.skipped} cached (${elapsed}s)`));
 console.log('');
+
+// In collect-only mode, exit after cache is built
+if (collectOnly) {
+  const cacheDbPath = path.join(os.homedir(), '.agentlytics', 'cache.db');
+  console.log(chalk.dim(`  Cache file: ${cacheDbPath}`));
+  console.log('');
+  process.exit(0);
+}
 
 // Start server
 const app = require('./server');

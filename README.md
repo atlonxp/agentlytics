@@ -17,9 +17,7 @@
 </p>
 
 <p align="center">
-  
-![agentlytics](https://github.com/user-attachments/assets/fdb0acb2-db0f-4091-af23-949ca0fae9c8)
-
+  <img src="https://github.com/user-attachments/assets/fdb0acb2-db0f-4091-af23-949ca0fae9c8" alt="Agentlytics demo" width="100%">
 </p>
 
 ---

@@ -1,19 +1,21 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search } from 'lucide-react'
+import { ArrowLeft, Search, FolderOpen, Calendar, MessageSquare, Wrench, Cpu, Zap, AlertTriangle } from 'lucide-react'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import { fetchProjects, fetchChats } from '../lib/api'
 import { editorColor, editorLabel, formatNumber, formatDate } from '../lib/constants'
 import { useTheme } from '../lib/theme'
 import KpiCard from '../components/KpiCard'
-import EditorDot from '../components/EditorDot'
+import EditorIcon from '../components/EditorIcon'
+import SectionTitle from '../components/SectionTitle'
 import ChatSidebar from '../components/ChatSidebar'
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement)
 
 const MONO = 'JetBrains Mono, monospace'
 const MODEL_COLORS = ['#6366f1', '#a78bfa', '#818cf8', '#c084fc', '#e879f9', '#f472b6', '#fb7185', '#f87171', '#fbbf24', '#34d399']
+const TOOL_COLORS = ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0', '#d1fae5', '#ecfdf5', '#b8f0d8', '#7ce0b8', '#4ade80', '#22c55e']
 
 export default function ProjectDetail() {
   const [searchParams] = useSearchParams()
@@ -29,6 +31,7 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true)
   const [chatSearch, setChatSearch] = useState('')
   const [selectedChatId, setSelectedChatId] = useState(null)
+  const [enabledEditors, setEnabledEditors] = useState(null)
 
   useEffect(() => {
     if (!folder) return
@@ -40,19 +43,34 @@ export default function ProjectDetail() {
       const match = projects.find(p => p.folder === folder)
       setProject(match || null)
       setChats(chatData.chats || [])
+      if (match) setEnabledEditors(new Set(Object.keys(match.editors)))
       setLoading(false)
     })
   }, [folder])
 
+  const editorFilteredChats = useMemo(() => {
+    if (!enabledEditors) return chats
+    return chats.filter(c => enabledEditors.has(c.source))
+  }, [chats, enabledEditors])
+
   const filteredChats = useMemo(() => {
-    if (!chatSearch) return chats
+    if (!chatSearch) return editorFilteredChats
     const q = chatSearch.toLowerCase()
-    return chats.filter(c =>
+    return editorFilteredChats.filter(c =>
       (c.name && c.name.toLowerCase().includes(q)) ||
       (c.topModel && c.topModel.toLowerCase().includes(q)) ||
       (c.source && c.source.toLowerCase().includes(q))
     )
-  }, [chats, chatSearch])
+  }, [editorFilteredChats, chatSearch])
+
+  const toggleEditor = (editorId) => {
+    setEnabledEditors(prev => {
+      const next = new Set(prev)
+      if (next.has(editorId)) next.delete(editorId)
+      else next.add(editorId)
+      return next
+    })
+  }
 
   if (!folder) return <div className="text-sm py-12 text-center" style={{ color: 'var(--c-text3)' }}>no project specified</div>
   if (loading) return <div className="text-sm py-12 text-center" style={{ color: 'var(--c-text2)' }}>loading project...</div>
@@ -60,65 +78,120 @@ export default function ProjectDetail() {
 
   const editorEntries = Object.entries(project.editors).sort((a, b) => b[1] - a[1])
   const maxEditorCount = editorEntries.length > 0 ? editorEntries[0][1] : 1
+  const allEnabled = !enabledEditors || enabledEditors.size === editorEntries.length
+
+  // Derive stats from editor-filtered chats
+  const fSessionCount = editorFilteredChats.length
+  const fEditorCounts = {}
+  const fModelCounts = {}
+  for (const c of editorFilteredChats) {
+    fEditorCounts[c.source] = (fEditorCounts[c.source] || 0) + 1
+    if (c.topModel) fModelCounts[c.topModel] = (fModelCounts[c.topModel] || 0) + 1
+  }
+  const fTopModels = Object.entries(fModelCounts).sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const fMaxEditorCount = Math.max(...Object.values(fEditorCounts), 1)
+
+  // Use project-level stats when all editors enabled, otherwise show filtered session count
+  const totalTok = project.totalInputTokens + project.totalOutputTokens
+  const outputRatio = project.totalInputTokens > 0 ? (project.totalOutputTokens / project.totalInputTokens).toFixed(1) : '0'
+  const displaySessions = allEnabled ? project.totalSessions : fSessionCount
+  const avgMsgs = allEnabled && project.totalSessions > 0 ? (project.totalMessages / project.totalSessions).toFixed(1) : 0
 
   return (
-    <div className="fade-in space-y-5">
-      {/* Back + title */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate('/projects')}
-          className="flex items-center gap-1.5 text-xs transition"
-          style={{ color: 'var(--c-text2)' }}
-        >
-          <ArrowLeft size={14} /> Projects
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-base font-semibold truncate" style={{ color: 'var(--c-white)' }}>{project.name}</h1>
-          <div className="text-[10px] truncate" style={{ color: 'var(--c-text3)' }}>{project.folder}</div>
+    <div className="fade-in space-y-4">
+      {/* Header card */}
+      <div className="card p-4">
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => navigate('/projects')}
+            className="flex items-center gap-1 text-[11px] transition mt-0.5 flex-shrink-0"
+            style={{ color: 'var(--c-text3)' }}
+          >
+            <ArrowLeft size={12} />
+          </button>
+          <FolderOpen size={18} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--c-accent)' }} />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-bold truncate" style={{ color: 'var(--c-white)' }}>{project.name}</h1>
+            <div className="text-[10px] truncate" style={{ color: 'var(--c-text3)' }}>{project.folder}</div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {editorEntries.map(([e]) => (
+              <EditorIcon key={e} source={e} size={14} />
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-4 mt-3 pt-3 text-[10px]" style={{ borderTop: '1px solid var(--c-border)' }}>
+          <div className="flex items-center gap-1" style={{ color: 'var(--c-text3)' }}>
+            <Calendar size={9} />
+            <span>{formatDate(project.firstSeen)}</span>
+            <span>→</span>
+            <span>{formatDate(project.lastSeen)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            {editorEntries.map(([e, c]) => (
+              <span key={e} className="inline-flex items-center gap-0.5">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: editorColor(e) }} />
+                <span style={{ color: 'var(--c-text3)' }}>{editorLabel(e)}</span>
+                <span className="font-bold" style={{ color: 'var(--c-text2)' }}>{c}</span>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <KpiCard label="sessions" value={project.totalSessions} />
-        <KpiCard label="messages" value={formatNumber(project.totalMessages)} />
-        <KpiCard label="tool calls" value={formatNumber(project.totalToolCalls)} />
-        <KpiCard label="input tokens" value={formatNumber(project.totalInputTokens)} />
-        <KpiCard label="output tokens" value={formatNumber(project.totalOutputTokens)} />
-        <KpiCard label="active since" value={formatDate(project.firstSeen)} />
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))' }}>
+        <KpiCard label="sessions" value={displaySessions} sub={!allEnabled ? 'filtered' : ''} />
+        <KpiCard label="messages" value={formatNumber(project.totalMessages)} sub={`${avgMsgs} avg/session`} />
+        <KpiCard label="tool calls" value={formatNumber(project.totalToolCalls)} sub={<span className="flex items-center gap-0.5"><Wrench size={8} /> invocations</span>} />
+        <KpiCard label="tokens" value={formatNumber(totalTok)} sub={`${outputRatio}× out/in`} />
+        {project.totalCacheRead > 0 && (
+          <KpiCard label="cache read" value={formatNumber(project.totalCacheRead)} sub={`write: ${formatNumber(project.totalCacheWrite)}`} />
+        )}
+        <KpiCard label="you wrote" value={formatNumber(project.totalUserChars)} sub={`AI: ${formatNumber(project.totalAssistantChars)}`} />
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Editors */}
-        <div className="card p-4">
-          <h3 className="text-[10px] uppercase tracking-wider mb-3" style={{ color: 'var(--c-text2)' }}>editors</h3>
-          <div className="space-y-2">
-            {editorEntries.map(([e, c]) => (
-              <div key={e} className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: editorColor(e) }} />
-                <span className="text-xs flex-1 truncate" style={{ color: 'var(--c-text2)' }}>{editorLabel(e)}</span>
-                <div className="w-20 h-3 overflow-hidden" style={{ background: 'var(--c-code-bg)' }}>
-                  <div className="h-full" style={{ width: `${(c / maxEditorCount * 100).toFixed(0)}%`, background: editorColor(e) + '60' }} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Editors bar with checkboxes */}
+        <div className="card p-3">
+          <SectionTitle>editors</SectionTitle>
+          <div className="space-y-1.5 mt-1">
+            {editorEntries.map(([e, c]) => {
+              const checked = enabledEditors ? enabledEditors.has(e) : true
+              const count = fEditorCounts[e] || 0
+              return (
+                <div key={e} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleEditor(e)}
+                    className="accent-[var(--c-accent)] w-3 h-3 flex-shrink-0 cursor-pointer"
+                  />
+                  <EditorIcon source={e} size={11} />
+                  <span className="text-[10px] truncate flex-1 cursor-pointer select-none" onClick={() => toggleEditor(e)} style={{ color: checked ? 'var(--c-text2)' : 'var(--c-text3)', opacity: checked ? 1 : 0.4 }}>{editorLabel(e)}</span>
+                  <div className="w-16 h-3 rounded-sm overflow-hidden" style={{ background: 'var(--c-code-bg)' }}>
+                    <div className="h-full rounded-sm transition-all" style={{ width: `${(count / fMaxEditorCount * 100).toFixed(0)}%`, background: checked ? editorColor(e) : 'var(--c-text3)', opacity: checked ? 1 : 0.2 }} />
+                  </div>
+                  <span className="text-[10px] w-6 text-right font-bold" style={{ color: checked ? 'var(--c-white)' : 'var(--c-text3)', opacity: checked ? 1 : 0.4 }}>{count}</span>
                 </div>
-                <span className="text-[10px] w-6 text-right" style={{ color: 'var(--c-text3)' }}>{c}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
-        {/* Models chart */}
-        <div className="card p-4">
-          <h3 className="text-[10px] uppercase tracking-wider mb-3" style={{ color: 'var(--c-text2)' }}>models</h3>
-          {project.topModels.length > 0 ? (
-            <div style={{ height: 180 }}>
+        {/* Models doughnut */}
+        <div className="card p-3">
+          <SectionTitle>models</SectionTitle>
+          {fTopModels.length > 0 ? (
+            <div style={{ height: 160 }}>
               <Doughnut
                 data={{
-                  labels: project.topModels.map(m => m.name),
-                  datasets: [{ data: project.topModels.map(m => m.count), backgroundColor: MODEL_COLORS, borderWidth: 0 }],
+                  labels: fTopModels.map(m => m[0]),
+                  datasets: [{ data: fTopModels.map(m => m[1]), backgroundColor: MODEL_COLORS, borderWidth: 0 }],
                 }}
                 options={{
-                  responsive: true, maintainAspectRatio: false, cutout: '55%',
+                  responsive: true, maintainAspectRatio: false, cutout: '60%',
                   plugins: {
                     legend: { position: 'right', labels: { color: txtColor, font: { size: 8, family: MONO }, usePointStyle: true, pointStyle: 'circle', padding: 6 } },
                     tooltip: { bodyFont: { family: MONO, size: 10 }, titleFont: { family: MONO, size: 10 } },
@@ -129,17 +202,17 @@ export default function ProjectDetail() {
           ) : <div className="text-[10px] py-8 text-center" style={{ color: 'var(--c-text3)' }}>no model data</div>}
         </div>
 
-        {/* Top tools */}
-        <div className="card p-4">
-          <h3 className="text-[10px] uppercase tracking-wider mb-3" style={{ color: 'var(--c-text2)' }}>top tools</h3>
+        {/* Top tools horizontal bar */}
+        <div className="card p-3">
+          <SectionTitle>top tools <span style={{ color: 'var(--c-text3)' }}>({formatNumber(project.totalToolCalls)})</span></SectionTitle>
           {project.topTools.length > 0 ? (
-            <div style={{ height: 180 }}>
+            <div style={{ height: 160 }}>
               <Bar
                 data={{
                   labels: project.topTools.map(t => t.name),
                   datasets: [{
                     data: project.topTools.map(t => t.count),
-                    backgroundColor: 'rgba(99,102,241,0.4)',
+                    backgroundColor: TOOL_COLORS.slice(0, project.topTools.length),
                     borderRadius: 2,
                   }],
                 }}
@@ -157,18 +230,10 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Token breakdown */}
-      {(project.totalCacheRead > 0 || project.totalCacheWrite > 0) && (
-        <div className="flex gap-4 text-[10px]" style={{ color: 'var(--c-text3)' }}>
-          <span>cache read: {formatNumber(project.totalCacheRead)}</span>
-          <span>cache write: {formatNumber(project.totalCacheWrite)}</span>
-        </div>
-      )}
-
-      {/* Sessions list */}
+      {/* Sessions */}
       <div>
-        <div className="flex items-center gap-3 mb-3">
-          <h3 className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--c-text2)' }}>sessions ({chats.length})</h3>
+        <div className="flex items-center gap-3 mb-2">
+          <SectionTitle>sessions <span style={{ color: 'var(--c-text3)' }}>({filteredChats.length}{!allEnabled ? ` of ${chats.length}` : ''})</span></SectionTitle>
           <div className="relative max-w-xs flex-1">
             <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-text3)' }} />
             <input
@@ -176,21 +241,22 @@ export default function ProjectDetail() {
               placeholder="filter sessions..."
               value={chatSearch}
               onChange={e => setChatSearch(e.target.value)}
-              className="w-full pl-7 pr-3 py-1 text-[11px] outline-none"
+              className="w-full pl-7 pr-3 py-1 text-[11px] outline-none rounded-sm"
               style={{ background: 'var(--c-bg3)', color: 'var(--c-text)', border: '1px solid var(--c-border)' }}
             />
           </div>
         </div>
 
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
-                <th className="text-left py-2.5 px-4 font-medium">editor</th>
-                <th className="text-left py-2.5 px-4 font-medium">name</th>
-                <th className="text-left py-2.5 px-4 font-medium">mode</th>
-                <th className="text-left py-2.5 px-4 font-medium">model</th>
-                <th className="text-left py-2.5 px-4 font-medium">updated</th>
+              <tr className="text-[9px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
+                <th className="text-left py-2 px-3 font-medium">editor</th>
+                <th className="text-left py-2 px-3 font-medium">name</th>
+                <th className="text-left py-2 px-3 font-medium">mode</th>
+                <th className="text-left py-2 px-3 font-medium">model</th>
+                <th className="text-left py-2 px-3 font-medium">context</th>
+                <th className="text-left py-2 px-3 font-medium">updated</th>
               </tr>
             </thead>
             <tbody>
@@ -203,22 +269,32 @@ export default function ProjectDetail() {
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   onClick={() => setSelectedChatId(c.id)}
                 >
-                  <td className="py-2.5 px-4">
-                    <EditorDot source={c.source} showLabel size={7} />
+                  <td className="py-2 px-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      <EditorIcon source={c.source} size={12} />
+                      <span style={{ color: 'var(--c-text2)' }}>{editorLabel(c.source)}</span>
+                    </span>
                   </td>
-                  <td className="py-2.5 px-4 font-medium truncate max-w-[300px]" style={{ color: 'var(--c-white)' }}>
-                    {c.name || <span style={{ color: 'var(--c-text3)' }}>(untitled)</span>}
-                    {c.encrypted && <span className="ml-2 text-[10px] text-yellow-500/60">locked</span>}
+                  <td className="py-2 px-3 font-medium truncate max-w-[280px]" style={{ color: 'var(--c-white)' }}>
+                    {c.name || <span style={{ color: 'var(--c-text3)' }}>Untitled</span>}
+                    {c.encrypted && <span className="ml-1.5 text-[9px] text-yellow-500/60">locked</span>}
                   </td>
-                  <td className="py-2.5 px-4">
-                    <span className="text-xs" style={{ color: 'var(--c-text2)' }}>{c.mode}</span>
+                  <td className="py-2 px-3" style={{ color: 'var(--c-text2)' }}>{c.mode || ''}</td>
+                  <td className="py-2 px-3 font-mono truncate max-w-[150px]" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>{c.topModel || ''}</td>
+                  <td className="py-2 px-3">
+                    {c.bubbleCount >= 500 ? (
+                      <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#ef4444' }}>
+                        <AlertTriangle size={9} />{c.bubbleCount} msgs
+                      </span>
+                    ) : c.bubbleCount >= 100 ? (
+                      <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#f59e0b' }}>
+                        <AlertTriangle size={9} />{c.bubbleCount} msgs
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--c-text3)' }}>{c.bubbleCount || 0} msgs</span>
+                    )}
                   </td>
-                  <td className="py-2.5 px-4 text-xs truncate max-w-[180px] font-mono" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>
-                    {c.topModel || ''}
-                  </td>
-                  <td className="py-2.5 px-4 text-xs whitespace-nowrap" style={{ color: 'var(--c-text2)' }}>
-                    {formatDate(c.lastUpdatedAt || c.createdAt)}
-                  </td>
+                  <td className="py-2 px-3 whitespace-nowrap" style={{ color: 'var(--c-text3)' }}>{formatDate(c.lastUpdatedAt || c.createdAt)}</td>
                 </tr>
               ))}
             </tbody>

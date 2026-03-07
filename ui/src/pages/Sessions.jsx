@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Search, Filter, List, FolderOpen, ChevronDown, ChevronRight, X, AlertTriangle } from 'lucide-react'
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler } from 'chart.js'
-import { Line } from 'react-chartjs-2'
+import { Chart as ChartJS, ArcElement, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler } from 'chart.js'
+import { Line, Doughnut, Bar } from 'react-chartjs-2'
 import { fetchChats } from '../lib/api'
-import { editorColor, editorLabel, formatDate, dateRangeToApiParams } from '../lib/constants'
+import { editorColor, editorLabel, formatNumber, formatDate, dateRangeToApiParams } from '../lib/constants'
 import { useTheme } from '../lib/theme'
-import EditorDot from '../components/EditorDot'
+import KpiCard from '../components/KpiCard'
+import EditorIcon from '../components/EditorIcon'
+import SectionTitle from '../components/SectionTitle'
 import DateRangePicker from '../components/DateRangePicker'
 import ChatSidebar from '../components/ChatSidebar'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
+ChartJS.register(ArcElement, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler)
 
 const MONO = 'JetBrains Mono, monospace'
 
@@ -105,6 +107,7 @@ export default function Sessions({ overview }) {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [editor, setEditor] = useState(searchParams.get('editor') || '')
   const [loading, setLoading] = useState(true)
   const [groupByProject, setGroupByProject] = useState(false)
@@ -149,6 +152,33 @@ export default function Sessions({ overview }) {
   }, [searchFiltered, dateRange])
 
   const editors = overview?.editors || []
+  const MODEL_COLORS = ['#6366f1', '#a78bfa', '#818cf8', '#c084fc', '#e879f9', '#f472b6', '#fb7185', '#f87171', '#fbbf24', '#34d399']
+
+  // Summary stats from filtered chats
+  const stats = useMemo(() => {
+    const editorCounts = {}
+    const modelCounts = {}
+    const modeCounts = {}
+    let bloatCount = 0
+    let largeCount = 0
+    const projectSet = new Set()
+    for (const c of filtered) {
+      if (c.source) editorCounts[c.source] = (editorCounts[c.source] || 0) + 1
+      if (c.topModel) modelCounts[c.topModel] = (modelCounts[c.topModel] || 0) + 1
+      if (c.mode) modeCounts[c.mode] = (modeCounts[c.mode] || 0) + 1
+      if (c.folder) projectSet.add(c.folder)
+      if (c.bubbleCount >= 500) bloatCount++
+      else if (c.bubbleCount >= 200) largeCount++
+    }
+    return {
+      editorEntries: Object.entries(editorCounts).sort((a, b) => b[1] - a[1]),
+      modelEntries: Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 10),
+      modeEntries: Object.entries(modeCounts).sort((a, b) => b[1] - a[1]),
+      bloatCount,
+      largeCount,
+      projectCount: projectSet.size,
+    }
+  }, [filtered])
 
   // Timeline chart data: sessions per week by editor (always use full list, not date-filtered)
   const timelineChart = useMemo(() => {
@@ -217,38 +247,45 @@ export default function Sessions({ overview }) {
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       onClick={() => setSelectedChatId(c.id)}
     >
-      <td className="py-2.5 px-4">
-        <EditorDot source={c.source} showLabel size={7} />
+      <td className="py-2 px-3">
+        <span className="inline-flex items-center gap-1.5">
+          <EditorIcon source={c.source} size={12} />
+          <span className="text-[11px]" style={{ color: 'var(--c-text2)' }}>{editorLabel(c.source)}</span>
+        </span>
       </td>
-      <td className="py-2.5 px-4 font-medium truncate max-w-[300px]" style={{ color: 'var(--c-white)' }}>
-        {c.name || <span style={{ color: 'var(--c-text3)' }}>(untitled)</span>}
-        {c.encrypted && <span className="ml-2 text-[10px] text-yellow-500/60">locked</span>}
-        {c.bubbleCount >= 200 && (
-          <span
-            className="ml-2 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-sm"
-            style={{
-              color: c.bubbleCount >= 500 ? '#ef4444' : '#f59e0b',
-              background: c.bubbleCount >= 500 ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
-            }}
-            title={`${c.bubbleCount} messages — large context may degrade AI performance`}
-          >
-            <AlertTriangle size={9} />
-            {c.bubbleCount >= 500 ? 'context bloat' : 'large context'}
-          </span>
-        )}
+      <td className="py-2 px-3 font-medium truncate max-w-[280px] text-[11px]" style={{ color: 'var(--c-white)' }}>
+        {c.name || <span style={{ color: 'var(--c-text3)' }}>Untitled</span>}
+        {c.encrypted && <span className="ml-1.5 text-[9px] text-yellow-500/60">locked</span>}
       </td>
       {!groupByProject && (
-        <td className="py-2.5 px-4 truncate max-w-[200px] text-xs" style={{ color: 'var(--c-text2)' }} title={c.folder}>
-          {c.folder ? c.folder.split('/').pop() : ''}
+        <td className="py-2 px-3 truncate max-w-[160px] text-[11px]" style={{ color: 'var(--c-text2)' }} title={c.folder}>
+          {c.folder ? (
+            <span
+              className="cursor-pointer hover:underline"
+              style={{ color: 'var(--c-accent)' }}
+              onClick={e => { e.stopPropagation(); navigate(`/projects/detail?folder=${encodeURIComponent(c.folder)}`) }}
+            >{c.folder.split('/').pop()}</span>
+          ) : ''}
         </td>
       )}
-      <td className="py-2.5 px-4">
-        <span className="text-xs" style={{ color: 'var(--c-text2)' }}>{c.mode}</span>
-      </td>
-      <td className="py-2.5 px-4 text-xs truncate max-w-[180px] font-mono" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>
+      <td className="py-2 px-3 text-[11px]" style={{ color: 'var(--c-text2)' }}>{c.mode || ''}</td>
+      <td className="py-2 px-3 text-[11px] font-mono truncate max-w-[150px]" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>
         {c.topModel || ''}
       </td>
-      <td className="py-2.5 px-4 text-xs whitespace-nowrap" style={{ color: 'var(--c-text2)' }}>
+      <td className="py-2 px-3 text-[11px]">
+        {c.bubbleCount >= 500 ? (
+          <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#ef4444' }}>
+            <AlertTriangle size={9} />{c.bubbleCount}
+          </span>
+        ) : c.bubbleCount >= 200 ? (
+          <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#f59e0b' }}>
+            <AlertTriangle size={9} />{c.bubbleCount}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--c-text3)' }}>{c.bubbleCount || 0}</span>
+        )}
+      </td>
+      <td className="py-2 px-3 text-[11px] whitespace-nowrap" style={{ color: 'var(--c-text3)' }}>
         {formatDate(c.lastUpdatedAt || c.createdAt)}
       </td>
     </tr>
@@ -256,14 +293,94 @@ export default function Sessions({ overview }) {
 
   return (
     <div className="fade-in space-y-4">
+      {/* KPIs */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))' }}>
+        <KpiCard label="sessions" value={formatNumber(filtered.length)} sub={filtered.length !== total ? `of ${formatNumber(total)}` : ''} />
+        <KpiCard label="projects" value={stats.projectCount} />
+        <KpiCard label="editors" value={stats.editorEntries.length} />
+        <KpiCard label="models" value={stats.modelEntries.length} />
+        {(stats.bloatCount + stats.largeCount) > 0 && (
+          <KpiCard label="large context" value={stats.bloatCount + stats.largeCount} sub={stats.bloatCount > 0 ? `${stats.bloatCount} bloated` : ''} />
+        )}
+      </div>
+
+      {/* Summary charts */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="card p-3">
+            <SectionTitle>editors</SectionTitle>
+            <div style={{ height: 140 }}>
+              <Doughnut
+                data={{
+                  labels: stats.editorEntries.map(e => editorLabel(e[0])),
+                  datasets: [{ data: stats.editorEntries.map(e => e[1]), backgroundColor: stats.editorEntries.map(e => editorColor(e[0])), borderWidth: 0 }],
+                }}
+                options={{
+                  responsive: true, maintainAspectRatio: false, cutout: '60%',
+                  plugins: {
+                    legend: { position: 'right', labels: { color: legendColor, font: { size: 9, family: MONO }, usePointStyle: true, pointStyle: 'circle', padding: 6 } },
+                    tooltip: { bodyFont: { family: MONO, size: 10 }, titleFont: { family: MONO, size: 10 } },
+                  },
+                }}
+              />
+            </div>
+          </div>
+          <div className="card p-3">
+            <SectionTitle>models</SectionTitle>
+            <div style={{ height: 140 }}>
+              {stats.modelEntries.length > 0 ? (
+                <Doughnut
+                  data={{
+                    labels: stats.modelEntries.map(m => m[0]),
+                    datasets: [{ data: stats.modelEntries.map(m => m[1]), backgroundColor: MODEL_COLORS, borderWidth: 0 }],
+                  }}
+                  options={{
+                    responsive: true, maintainAspectRatio: false, cutout: '60%',
+                    plugins: {
+                      legend: { position: 'right', labels: { color: legendColor, font: { size: 9, family: MONO }, usePointStyle: true, pointStyle: 'circle', padding: 6 } },
+                      tooltip: { bodyFont: { family: MONO, size: 10 }, titleFont: { family: MONO, size: 10 } },
+                    },
+                  }}
+                />
+              ) : <div className="text-[10px] py-8 text-center" style={{ color: 'var(--c-text3)' }}>no model data</div>}
+            </div>
+          </div>
+          <div className="card p-3">
+            <SectionTitle>modes</SectionTitle>
+            <div style={{ height: 140 }}>
+              {stats.modeEntries.length > 0 ? (
+                <Bar
+                  data={{
+                    labels: stats.modeEntries.map(m => m[0] || 'unknown'),
+                    datasets: [{
+                      data: stats.modeEntries.map(m => m[1]),
+                      backgroundColor: '#6366f1',
+                      borderRadius: 3,
+                    }],
+                  }}
+                  options={{
+                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                    scales: {
+                      x: { grid: { color: gridColor }, ticks: { color: txtDim, font: { size: 8, family: MONO } } },
+                      y: { grid: { display: false }, ticks: { color: legendColor, font: { size: 9, family: MONO } } },
+                    },
+                    plugins: { legend: { display: false }, tooltip: { bodyFont: { family: MONO, size: 10 }, titleFont: { family: MONO, size: 10 } } },
+                  }}
+                />
+              ) : <div className="text-[10px] py-8 text-center" style={{ color: 'var(--c-text3)' }}>no mode data</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Timeline chart */}
       {timelineChart && timelineChart.labels.length > 1 && (
-        <div className="card p-4">
+        <div className="card p-3">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--c-text2)' }}>
+            <SectionTitle>
               session timeline
-              <span className="ml-2 font-normal" style={{ color: 'var(--c-text3)' }}>(drag to select range)</span>
-            </h3>
+              <span className="ml-2 font-normal text-[9px]" style={{ color: 'var(--c-text3)' }}>(drag to select range)</span>
+            </SectionTitle>
             {dateRange && (
               <button
                 onClick={() => setDateRange(null)}
@@ -310,7 +427,7 @@ export default function Sessions({ overview }) {
               className="pl-8 pr-3 py-1 text-[11px] outline-none appearance-none cursor-pointer"
               style={{ background: 'var(--c-bg3)', color: 'var(--c-text)', border: '1px solid var(--c-border)' }}
             >
-              <option value="">all editors</option>
+              <option value="">All Editors</option>
               {editors.map(e => (
                 <option key={e.id} value={e.id}>{editorLabel(e.id)} ({e.count})</option>
               ))}
@@ -351,13 +468,14 @@ export default function Sessions({ overview }) {
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
-                <th className="text-left py-2.5 px-4 font-medium">editor</th>
-                <th className="text-left py-2.5 px-4 font-medium">name</th>
-                <th className="text-left py-2.5 px-4 font-medium">project</th>
-                <th className="text-left py-2.5 px-4 font-medium">mode</th>
-                <th className="text-left py-2.5 px-4 font-medium">model</th>
-                <th className="text-left py-2.5 px-4 font-medium">updated</th>
+              <tr className="text-[9px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
+                <th className="text-left py-2 px-3 font-medium">editor</th>
+                <th className="text-left py-2 px-3 font-medium">name</th>
+                <th className="text-left py-2 px-3 font-medium">project</th>
+                <th className="text-left py-2 px-3 font-medium">mode</th>
+                <th className="text-left py-2 px-3 font-medium">model</th>
+                <th className="text-left py-2 px-3 font-medium">context</th>
+                <th className="text-left py-2 px-3 font-medium">updated</th>
               </tr>
             </thead>
             <tbody>

@@ -492,10 +492,9 @@ export default function Dashboard({ overview }) {
                 return (
                   <div key={m.name} className="flex items-center gap-2">
                     <span className="text-[10px] w-3 text-right" style={{ color: 'var(--c-text3)' }}>{i + 1}</span>
+                    <span className="text-[9px] truncate w-28" style={{ color: 'var(--c-text2)' }} title={m.name}>{m.name}</span>
                     <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: 'var(--c-code-bg)' }}>
-                      <div className="h-full rounded-sm flex items-center px-1.5" style={{ width: `${(m.count / maxM * 100).toFixed(1)}%`, background: i === 0 ? '#6366f1' : i === 1 ? '#818cf8' : '#a5b4fc40' }}>
-                        <span className="text-[8px] truncate" style={{ color: i < 2 ? '#fff' : 'var(--c-text2)' }}>{m.name}</span>
-                      </div>
+                      <div className="h-full rounded-sm" style={{ width: `${(m.count / maxM * 100).toFixed(1)}%`, background: i === 0 ? '#6366f1' : i === 1 ? '#818cf8' : '#a5b4fc40' }} />
                     </div>
                     {modelCost ? <span className="text-[9px] w-12 text-right" style={{ color: '#10b981' }}>{formatCost(modelCost.cost)}</span> : null}
                     <span className="text-[10px] w-8 text-right" style={{ color: 'var(--c-text3)' }}>{m.count}</span>

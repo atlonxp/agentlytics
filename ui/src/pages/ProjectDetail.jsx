@@ -260,6 +260,7 @@ export default function ProjectDetail() {
                 <th className="text-left py-2 px-3 font-medium">mode</th>
                 <th className="text-left py-2 px-3 font-medium">model</th>
                 <th className="text-left py-2 px-3 font-medium">context</th>
+                <th className="text-right py-2 px-3 font-medium">est. cost</th>
                 <th className="text-left py-2 px-3 font-medium">updated</th>
               </tr>
             </thead>
@@ -297,6 +298,9 @@ export default function ProjectDetail() {
                     ) : (
                       <span style={{ color: 'var(--c-text3)' }}>{c.bubbleCount || 0} msgs</span>
                     )}
+                  </td>
+                  <td className="py-2 px-3 font-mono text-right" style={{ color: c.cost > 0 ? 'var(--c-text2)' : 'var(--c-text3)' }}>
+                    {c.cost > 0 ? formatCost(c.cost) : ''}
                   </td>
                   <td className="py-2 px-3 whitespace-nowrap" style={{ color: 'var(--c-text3)' }}>{formatDate(c.lastUpdatedAt || c.createdAt)}</td>
                 </tr>

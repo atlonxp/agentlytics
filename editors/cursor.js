@@ -91,11 +91,6 @@ function normalizeStoreMessage(json) {
     }
   }
   if (json.model) msg._model = json.model;
-  // Extract provider as model hint if no explicit model
-  if (!msg._model && json.providerOptions && typeof json.providerOptions === 'object') {
-    const providers = Object.keys(json.providerOptions).filter(k => k !== 'type');
-    if (providers.length > 0) msg._model = providers[0];
-  }
   return msg;
 }
 
@@ -157,6 +152,15 @@ function getComposerHeaders(stateDbPath) {
       isAgentic: c.unifiedMode === 'agent',
     }));
   } catch { return []; }
+}
+
+function getModelPreference(globalDb) {
+  try {
+    const row = globalDb.prepare("SELECT value FROM ItemTable WHERE key = 'cursor/lastSingleModelPreference'").get();
+    if (!row) return null;
+    const pref = JSON.parse(row.value);
+    return pref.composer || pref.agent || null;
+  } catch { return null; }
 }
 
 function getComposerBubbles(globalDb, composerId) {
@@ -260,9 +264,11 @@ function getChats() {
           composerId: chatId,
           name: meta.name || null,
           createdAt: meta.createdAt || null,
+          mode: meta.mode || null,
           folder: null,
           _dbPath: dbPath,
           _rootBlobId: meta.latestRootBlobId,
+          _lastUsedModel: meta.lastUsedModel || null,
           _type: 'agent-store',
         });
       }
@@ -272,6 +278,8 @@ function getChats() {
   // Source 2: workspaceStorage composers
   let globalDb = null;
   try { globalDb = new Database(GLOBAL_STORAGE_DB, { readonly: true }); } catch { /* no global db */ }
+
+  const modelPref = globalDb ? getModelPreference(globalDb) : null;
 
   for (const { hash, folder, stateDb } of getWorkspaceMap()) {
     const headers = getComposerHeaders(stateDb);
@@ -295,6 +303,7 @@ function getChats() {
         folder,
         bubbleCount,
         _type: 'workspace',
+        _modelPref: modelPref,
       });
     }
   }
@@ -308,6 +317,12 @@ function getMessages(chat) {
     const db = new Database(chat._dbPath, { readonly: true });
     const msgs = collectStoreMessages(db, chat._rootBlobId);
     db.close();
+    // Use lastUsedModel as fallback for assistant messages without model info
+    if (chat._lastUsedModel) {
+      for (const m of msgs) {
+        if (m.role === 'assistant' && !m._model) m._model = chat._lastUsedModel;
+      }
+    }
     return msgs;
   }
 
@@ -315,7 +330,14 @@ function getMessages(chat) {
   try { globalDb = new Database(GLOBAL_STORAGE_DB, { readonly: true }); } catch { return []; }
   const bubbles = getComposerBubbles(globalDb, chat.composerId);
   globalDb.close();
-  return bubblesToMessages(bubbles);
+  const msgs = bubblesToMessages(bubbles);
+  // Use model preference as fallback for messages without model info
+  if (chat._modelPref) {
+    for (const m of msgs) {
+      if (m.role === 'assistant' && !m._model) m._model = chat._modelPref;
+    }
+  }
+  return msgs;
 }
 
 module.exports = { name, getChats, getMessages };

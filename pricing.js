@@ -14,20 +14,53 @@ function normalizeModelName(name) {
   const slashIdx = n.lastIndexOf('/');
   if (slashIdx !== -1) n = n.substring(slashIdx + 1);
 
-  // Direct match first
-  if (MODEL_PRICING[n]) return n;
+  // Strip dot-delimited provider prefixes (e.g. "us.anthropic.claude-sonnet-4-6")
+  // Only strip if all prefix segments are simple words (no dashes), to avoid
+  // splitting version dots like "claude-4.6-opus"
+  const dotParts = n.split('.');
+  if (dotParts.length > 1) {
+    const prefixes = dotParts.slice(0, -1);
+    const last = dotParts[dotParts.length - 1];
+    if (last.includes('-') && prefixes.every(p => !p.includes('-'))) n = last;
+  }
 
-  // Try stripping date suffixes like -20250514, -2024-08-06
-  const withoutDate = n.replace(/-\d{4}-?\d{2}-?\d{2}$/, '');
-  if (MODEL_PRICING[withoutDate]) return withoutDate;
+  // Handle MODEL_CLAUDE_* / MODEL_GPT_* enum constants
+  if (n.startsWith('model_')) {
+    n = n.substring(6).replace(/_/g, '-');
+  }
 
-  // Try stripping :latest or similar tags
-  const withoutTag = n.replace(/:(latest|thinking)$/, '');
-  if (MODEL_PRICING[withoutTag]) return withoutTag;
+  // Build candidate list: original + dots→dashes + reversed claude names
+  const candidates = [n];
+  if (n.includes('.')) candidates.push(n.replace(/\./g, '-'));
 
-  // Fuzzy matching: check if model name starts with a known key
-  for (const key of Object.keys(MODEL_PRICING)) {
-    if (n.startsWith(key)) return key;
+  // Rearrange reversed claude names: "claude-4-6-opus-..." → "claude-opus-4-6"
+  // Run on all candidates so dots→dashes variant is also checked
+  for (const c of [...candidates]) {
+    const rev = c.match(/^(claude)-(\d+)-(\d+)-(opus|sonnet|haiku)/);
+    if (rev) candidates.push(`${rev[1]}-${rev[4]}-${rev[2]}-${rev[3]}`);
+  }
+
+  // Pass 1: exact and precise matches across ALL candidates first
+  for (const c of candidates) {
+    if (MODEL_PRICING[c]) return c;
+  }
+  for (const c of candidates) {
+    const withoutDate = c.replace(/-\d{4}-?\d{2}-?\d{2}$/, '');
+    if (MODEL_PRICING[withoutDate]) return withoutDate;
+    const withoutTag = c.replace(/:(latest|thinking)$/, '');
+    if (MODEL_PRICING[withoutTag]) return withoutTag;
+    const withoutQual = c.replace(/-(thinking|high|xhigh|preview|latest)(-thinking|-high|-xhigh|-preview)*/g, '');
+    if (withoutQual !== c && MODEL_PRICING[withoutQual]) return withoutQual;
+  }
+
+  // Pass 2: fuzzy startsWith (longest key match wins)
+  const keys = Object.keys(MODEL_PRICING);
+  for (const c of candidates) {
+    let best = null;
+    for (const key of keys) {
+      if (c.startsWith(key) && (!best || key.length > best.length)) best = key;
+    }
+    if (best) return best;
   }
 
   return null;

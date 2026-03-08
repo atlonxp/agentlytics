@@ -66,6 +66,7 @@ app.get('/api/chats', (req, res) => {
         encrypted: !!c.encrypted,
         bubbleCount: c.bubble_count,
         topModel: c.top_model || null,
+        cost: c.cost || 0,
       })),
     });
   } catch (err) {

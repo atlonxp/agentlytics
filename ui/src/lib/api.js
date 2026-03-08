@@ -147,6 +147,25 @@ export async function fetchCosts(params = {}) {
   return res.json();
 }
 
+export async function fetchConfig() {
+  const res = await fetch(`${BASE}/api/config`);
+  return res.json();
+}
+
+export async function updateConfig(data) {
+  const res = await fetch(`${BASE}/api/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function fetchAllProjects() {
+  const res = await fetch(`${BASE}/api/all-projects`);
+  return res.json();
+}
+
 export async function executeQuery(sql) {
   const res = await fetch(`${BASE}/api/query`, {
     method: 'POST',

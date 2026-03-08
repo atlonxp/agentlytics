@@ -1,11 +1,33 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const cache = require('./cache');
 const { generateShareSvg } = require('./share-image');
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================================
+// Config: ~/.agentlytics/config.json
+// ============================================================
+
+const CONFIG_PATH = path.join(os.homedir(), '.agentlytics', 'config.json');
+
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')); } catch { return {}; }
+}
+
+function writeConfig(config) {
+  const dir = path.dirname(CONFIG_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+function getHiddenFolders() {
+  return readConfig().hiddenProjects || [];
+}
 
 // ============================================================
 // API endpoints — all reads from SQLite cache
@@ -25,7 +47,7 @@ app.get('/api/mode', (req, res) => {
 
 app.get('/api/overview', (req, res) => {
   try {
-    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query) };
+    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query), hiddenFolders: getHiddenFolders() };
     res.json(cache.getCachedOverview(opts));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -34,7 +56,7 @@ app.get('/api/overview', (req, res) => {
 
 app.get('/api/daily-activity', (req, res) => {
   try {
-    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query) };
+    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query), hiddenFolders: getHiddenFolders() };
     res.json(cache.getCachedDailyActivity(opts));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -50,6 +72,7 @@ app.get('/api/chats', (req, res) => {
       limit: req.query.limit ? parseInt(req.query.limit) : 200,
       offset: req.query.offset ? parseInt(req.query.offset) : 0,
       ...parseDateOpts(req.query),
+      hiddenFolders: getHiddenFolders(),
     };
     const total = cache.countCachedChats(opts);
     const rows = cache.getCachedChats(opts);
@@ -131,7 +154,7 @@ app.get('/api/chats/:id/markdown', (req, res) => {
 
 app.get('/api/projects', (req, res) => {
   try {
-    res.json(cache.getCachedProjects(parseDateOpts(req.query)));
+    res.json(cache.getCachedProjects({ ...parseDateOpts(req.query), hiddenFolders: getHiddenFolders() }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -144,6 +167,7 @@ app.get('/api/deep-analytics', (req, res) => {
       folder: req.query.folder || null,
       limit: Math.min(parseInt(req.query.limit) || 500, 5000),
       ...parseDateOpts(req.query),
+      hiddenFolders: getHiddenFolders(),
     };
     res.json(cache.getCachedDeepAnalytics(opts));
   } catch (err) {
@@ -153,7 +177,7 @@ app.get('/api/deep-analytics', (req, res) => {
 
 app.get('/api/dashboard-stats', (req, res) => {
   try {
-    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query) };
+    const opts = { editor: req.query.editor || null, ...parseDateOpts(req.query), hiddenFolders: getHiddenFolders() };
     res.json(cache.getCachedDashboardStats(opts));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -165,6 +189,7 @@ app.get('/api/cost-analytics', (req, res) => {
     const opts = {
       editor: req.query.editor || null,
       ...parseDateOpts(req.query),
+      hiddenFolders: getHiddenFolders(),
     };
     res.json(cache.getCostAnalytics(opts));
   } catch (err) {
@@ -179,6 +204,7 @@ app.get('/api/costs', (req, res) => {
       folder: req.query.folder || null,
       chatId: req.query.chatId || null,
       ...parseDateOpts(req.query),
+      hiddenFolders: getHiddenFolders(),
     };
     res.json(cache.getCostBreakdown(opts));
   } catch (err) {
@@ -264,6 +290,33 @@ app.get('/api/refetch', async (req, res) => {
     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
   }
   res.end();
+});
+
+// ============================================================
+// Config endpoints
+// ============================================================
+
+app.get('/api/config', (req, res) => {
+  res.json(readConfig());
+});
+
+app.put('/api/config', (req, res) => {
+  try {
+    const config = readConfig();
+    Object.assign(config, req.body);
+    writeConfig(config);
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/all-projects', (req, res) => {
+  try {
+    res.json(cache.getCachedProjects({ ...parseDateOpts(req.query), includeHidden: true }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // SPA fallback

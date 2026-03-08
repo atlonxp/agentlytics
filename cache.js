@@ -293,6 +293,13 @@ function scanAll(onProgress, opts = {}) {
 // Query helpers (used by server.js)
 // ============================================================
 
+// Returns { sql, params } for excluding hidden folders
+function hiddenFolderFilter(opts, colName = 'folder') {
+  if (!opts.hiddenFolders || opts.hiddenFolders.length === 0) return { sql: '', params: [] };
+  const placeholders = opts.hiddenFolders.map(() => '?').join(',');
+  return { sql: ` AND (${colName} IS NULL OR ${colName} NOT IN (${placeholders}))`, params: [...opts.hiddenFolders] };
+}
+
 function getCachedChats(opts = {}) {
   let sql = `SELECT c.*,
     cs.models AS _models,
@@ -301,6 +308,8 @@ function getCachedChats(opts = {}) {
     cs.total_user_chars AS _uChars, cs.total_assistant_chars AS _aChars
     FROM chats c LEFT JOIN chat_stats cs ON cs.chat_id = c.id WHERE 1=1`;
   const params = [];
+  const hf = hiddenFolderFilter(opts, 'c.folder');
+  if (hf.sql) { sql += hf.sql; params.push(...hf.params); }
   if (opts.editor) { sql += ' AND c.source LIKE ?'; params.push(`%${opts.editor}%`); }
   if (opts.folder) { sql += ' AND c.folder LIKE ?'; params.push(`%${opts.folder}%`); }
   if (opts.named !== false) { sql += ' AND (c.name IS NOT NULL OR c.bubble_count > 0)'; }
@@ -335,6 +344,8 @@ function getCachedChats(opts = {}) {
 function countCachedChats(opts = {}) {
   let sql = 'SELECT COUNT(*) as cnt FROM chats WHERE 1=1';
   const params = [];
+  const hf = hiddenFolderFilter(opts);
+  if (hf.sql) { sql += hf.sql; params.push(...hf.params); }
   if (opts.editor) { sql += ' AND source LIKE ?'; params.push(`%${opts.editor}%`); }
   if (opts.folder) { sql += ' AND folder LIKE ?'; params.push(`%${opts.folder}%`); }
   if (opts.named !== false) { sql += ' AND (name IS NOT NULL OR bubble_count > 0)'; }
@@ -347,6 +358,8 @@ function getCachedOverview(opts = {}) {
   // Build conditions dynamically to support editor + date range filters
   const conditions = [];
   const params = [];
+  const hf = hiddenFolderFilter(opts);
+  if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('source = ?'); params.push(opts.editor); }
   if (opts.dateFrom) { conditions.push('COALESCE(last_updated_at, created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(last_updated_at, created_at) <= ?'); params.push(opts.dateTo); }
@@ -411,6 +424,8 @@ function getCachedOverview(opts = {}) {
 function getCachedDailyActivity(opts = {}) {
   const conditions = [];
   const params = [];
+  const hf = hiddenFolderFilter(opts);
+  if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('source = ?'); params.push(opts.editor); }
   if (opts.dateFrom) { conditions.push('COALESCE(last_updated_at, created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(last_updated_at, created_at) <= ?'); params.push(opts.dateTo); }
@@ -441,6 +456,8 @@ function getCachedDailyActivity(opts = {}) {
 function getCachedDeepAnalytics(opts = {}) {
   let sql = 'SELECT cs.* FROM chat_stats cs JOIN chats c ON cs.chat_id = c.id WHERE 1=1';
   const params = [];
+  const hf = hiddenFolderFilter(opts, 'c.folder');
+  if (hf.sql) { sql += hf.sql; params.push(...hf.params); }
   if (opts.editor) { sql += ' AND c.source LIKE ?'; params.push(`%${opts.editor}%`); }
   if (opts.folder) { sql += ' AND c.folder = ?'; params.push(opts.folder); }
   if (opts.dateFrom) { sql += ' AND COALESCE(c.last_updated_at, c.created_at) >= ?'; params.push(opts.dateFrom); }
@@ -542,6 +559,10 @@ function getCachedProjects(opts = {}) {
   // Build date filter
   let dateFilter = '';
   const dateParams = [];
+  if (!opts.includeHidden) {
+    const hf = hiddenFolderFilter(opts);
+    if (hf.sql) { dateFilter += hf.sql; dateParams.push(...hf.params); }
+  }
   if (opts.dateFrom) { dateFilter += ' AND COALESCE(last_updated_at, created_at) >= ?'; dateParams.push(opts.dateFrom); }
   if (opts.dateTo) { dateFilter += ' AND COALESCE(last_updated_at, created_at) <= ?'; dateParams.push(opts.dateTo); }
 
@@ -745,6 +766,8 @@ function getCachedDashboardStats(opts = {}) {
   // Build conditions dynamically to support editor + date range filters
   const conditions = [];
   const params = [];
+  const hf = hiddenFolderFilter(opts);
+  if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('source = ?'); params.push(opts.editor); }
   if (opts.dateFrom) { conditions.push('COALESCE(last_updated_at, created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(last_updated_at, created_at) <= ?'); params.push(opts.dateTo); }
@@ -1103,6 +1126,8 @@ function estimateCosts(whereClause = '', params = []) {
 function getCostBreakdown(opts = {}) {
   let whereClause = '';
   const params = [];
+  const hf = hiddenFolderFilter(opts, 'c.folder');
+  if (hf.sql) { whereClause += hf.sql; params.push(...hf.params); }
   if (opts.editor) { whereClause += ' AND c.source LIKE ?'; params.push(`%${opts.editor}%`); }
   if (opts.folder) { whereClause += ' AND c.folder = ?'; params.push(opts.folder); }
   if (opts.dateFrom) { whereClause += ' AND COALESCE(c.last_updated_at, c.created_at) >= ?'; params.push(opts.dateFrom); }
@@ -1114,6 +1139,8 @@ function getCostBreakdown(opts = {}) {
 function getCostAnalytics(opts = {}) {
   const conditions = [];
   const params = [];
+  const hf = hiddenFolderFilter(opts, 'c.folder');
+  if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('c.source LIKE ?'); params.push(`%${opts.editor}%`); }
   if (opts.dateFrom) { conditions.push('COALESCE(c.last_updated_at, c.created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(c.last_updated_at, c.created_at) <= ?'); params.push(opts.dateTo); }

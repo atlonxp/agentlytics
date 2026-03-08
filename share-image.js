@@ -93,6 +93,8 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
   };
   const username = opts.username || '';
   const t = THEMES[opts.theme] || THEMES.dark;
+  const projectFolder = opts.folder || '';
+  const projectName = projectFolder ? projectFolder.split(/[/\\]/).pop() : '';
 
   const W = 1200;
   const H_FIXED = 675;
@@ -183,9 +185,10 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
   });
 
   // ── Editor bar chart ──
+  const colW = (W - pad * 2 - 20) / 2;
+  const maxBarW = colW - 120 - 60;
   const maxEditorCount = Math.max(...editors.map(e => e.count), 1);
   const editorBarsArr = editors.slice(0, 8).map((e, i) => {
-    const maxBarW = W / 2 - pad - 140;
     const barW = Math.max((e.count / maxEditorCount) * maxBarW, 4);
     const color = EDITOR_COLORS[e.id] || '#6b7280';
     const label = (EDITOR_LABELS[e.id] || e.id);
@@ -195,7 +198,6 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
   // ── Cost bar chart ──
   const maxCostVal = costByEditor.length > 0 ? Math.max(...costByEditor.map(c => c.cost), 0.01) : 1;
   const costBarsArr = costByEditor.map(c => {
-    const maxBarW = W / 2 - pad - 140;
     const barW = Math.max((c.cost / maxCostVal) * maxBarW, 4);
     const color = EDITOR_COLORS[c.editor] || '#6b7280';
     const label = EDITOR_LABELS[c.editor] || c.editor;
@@ -209,7 +211,6 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
   // ── Build sections ──
   let curY = kpiY + 64 + 18;
   const sectionSvgs = [];
-  const colW = (W - pad * 2 - 20) / 2;
 
   for (let row = 0; row < rowCount; row++) {
     const lName = leftSections[row];
@@ -330,7 +331,7 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
     <path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>
   </g>
   <text x="${pad + 26}" y="68" fill="${t.text}" font-size="16" font-weight="bold" font-family=${F}>Agentlytics</text>
-  <text x="${pad + 148}" y="68" fill="${t.text4}" font-size="13" font-family=${F}>Your AI coding stats</text>
+  <text x="${pad + 148}" y="68" fill="${t.text4}" font-size="13" font-family=${F}>${projectName ? esc(projectName) : 'Your AI coding stats'}</text>
   <text x="${W - pad}" y="68" fill="${t.text5}" font-size="12" font-family=${F} text-anchor="end">${esc(dateStr)}</text>
 
   <!-- Divider -->

@@ -189,6 +189,7 @@ export async function fetchShareImage(opts = {}) {
   if (opts.showHours !== undefined) q.set('showHours', opts.showHours);
   if (opts.username) q.set('username', opts.username);
   if (opts.theme) q.set('theme', opts.theme);
+  if (opts.folder) q.set('folder', opts.folder);
   const qs = q.toString();
   const res = await fetch(`${BASE}/api/share-image${qs ? '?' + qs : ''}`);
   return res.text();

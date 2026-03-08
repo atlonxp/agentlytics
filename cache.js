@@ -431,14 +431,17 @@ function getCachedOverview(opts = {}) {
   const hf = hiddenFolderFilter(opts);
   if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('source = ?'); params.push(opts.editor); }
+  if (opts.folder) { conditions.push('folder = ?'); params.push(opts.folder); }
   if (opts.dateFrom) { conditions.push('COALESCE(last_updated_at, created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(last_updated_at, created_at) <= ?'); params.push(opts.dateTo); }
   const where = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
   const whereAnd = conditions.length > 0 ? ' AND ' + conditions.join(' AND ') : '';
 
   const totalChats = db.prepare(`SELECT COUNT(*) as cnt FROM chats${where}`).get(...params).cnt;
-  // Editors list is always unfiltered so the breakdown remains visible
-  const editors = db.prepare('SELECT source, COUNT(*) as count FROM chats GROUP BY source ORDER BY count DESC').all();
+  // When folder-filtered, show only that project's editors; otherwise show all
+  const editors = opts.folder
+    ? db.prepare(`SELECT source, COUNT(*) as count FROM chats${where} GROUP BY source ORDER BY count DESC`).all(...params)
+    : db.prepare('SELECT source, COUNT(*) as count FROM chats GROUP BY source ORDER BY count DESC').all();
 
   // By mode
   const modes = db.prepare(`SELECT mode, COUNT(*) as count FROM chats WHERE mode IS NOT NULL${whereAnd} GROUP BY mode`).all(...params);
@@ -851,6 +854,7 @@ function getCachedDashboardStats(opts = {}) {
   const hf = hiddenFolderFilter(opts);
   if (hf.sql) { conditions.push(hf.sql.replace(' AND ', '')); params.push(...hf.params); }
   if (opts.editor) { conditions.push('source = ?'); params.push(opts.editor); }
+  if (opts.folder) { conditions.push('folder = ?'); params.push(opts.folder); }
   if (opts.dateFrom) { conditions.push('COALESCE(last_updated_at, created_at) >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('COALESCE(last_updated_at, created_at) <= ?'); params.push(opts.dateTo); }
   const where = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';

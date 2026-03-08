@@ -264,9 +264,11 @@ app.get('/api/schema', (req, res) => {
 
 app.get('/api/share-image', (req, res) => {
   try {
-    const overview = cache.getCachedOverview();
-    const stats = cache.getCachedDashboardStats();
-    const costs = cache.getCostAnalytics({ hiddenFolders: getHiddenFolders() });
+    const filterOpts = { hiddenFolders: getHiddenFolders() };
+    if (req.query.folder) filterOpts.folder = req.query.folder;
+    const overview = cache.getCachedOverview(filterOpts);
+    const stats = cache.getCachedDashboardStats(filterOpts);
+    const costs = cache.getCostAnalytics(filterOpts);
     const opts = {};
     if (req.query.showEditors !== undefined) opts.showEditors = req.query.showEditors !== 'false';
     if (req.query.showModels !== undefined) opts.showModels = req.query.showModels !== 'false';
@@ -275,6 +277,7 @@ app.get('/api/share-image', (req, res) => {
     if (req.query.showHours !== undefined) opts.showHours = req.query.showHours !== 'false';
     if (req.query.username) opts.username = req.query.username;
     if (req.query.theme) opts.theme = req.query.theme;
+    if (req.query.folder) opts.folder = req.query.folder;
     const svg = generateShareSvg(overview, stats, costs, opts);
     res.setHeader('Content-Type', 'image/svg+xml');
     res.send(svg);

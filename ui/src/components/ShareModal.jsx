@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Download, Share2, BarChart3, DollarSign, Clock, Cpu, Braces, User, Sun, Moon } from 'lucide-react'
-import { fetchShareImage } from '../lib/api'
+import { X, Download, Share2, BarChart3, DollarSign, Clock, Cpu, Braces, User, Sun, Moon, FolderOpen } from 'lucide-react'
+import { fetchShareImage, fetchProjects } from '../lib/api'
 
 const TOGGLE_ITEMS = [
   { key: 'showEditors', label: 'Editors', icon: BarChart3 },
@@ -23,6 +23,7 @@ export default function ShareModal({ open, onClose }) {
   const [svg, setSvg] = useState('')
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [projects, setProjects] = useState([])
   const debounceRef = useRef(null)
   const backdropRef = useRef(null)
 
@@ -40,6 +41,7 @@ export default function ShareModal({ open, onClose }) {
   useEffect(() => {
     if (!open) return
     loadPreview(opts)
+    fetchProjects().then(p => setProjects(p || [])).catch(() => {})
   }, [open])
 
   const updateOpt = (key, value) => {
@@ -144,6 +146,28 @@ export default function ShareModal({ open, onClose }) {
             <div className="flex-shrink-0" style={{ width: 200 }}>
               <div className="text-[11px] font-medium mb-3" style={{ color: 'var(--c-text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Customize
+              </div>
+
+              <div className="mb-4">
+                <div className="text-[11px] font-medium mb-2" style={{ color: 'var(--c-text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Project
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md" style={{ border: '1px solid var(--c-border)', background: 'var(--c-bg)' }}>
+                  <FolderOpen size={11} style={{ color: 'var(--c-text3)' }} />
+                  <select
+                    value={opts.folder || ''}
+                    onChange={(e) => updateOpt('folder', e.target.value || undefined)}
+                    className="bg-transparent outline-none text-[12px] w-full cursor-pointer"
+                    style={{ color: 'var(--c-text)', appearance: 'none' }}
+                  >
+                    <option value="">All Projects</option>
+                    {projects.map(p => (
+                      <option key={p.folder} value={p.folder}>
+                        {p.name} ({p.totalSessions})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1.5">

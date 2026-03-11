@@ -493,15 +493,16 @@ app.get('/api/mcps', async (req, res) => {
       ORDER BY tc.timestamp DESC
     `).all();
 
-    const toolCallMap = {}; // toolName -> { count, editors: Set, sessions: Set }
+    const toolCallMap = {}; // toolName -> { count, editors: Set, sessions: Set, folders: Set }
     const sessionMap = {};  // chatId -> { ... }
 
     for (const row of toolRows) {
       const name = row.tool_name;
-      if (!toolCallMap[name]) toolCallMap[name] = { count: 0, editors: new Set(), sessions: new Set() };
+      if (!toolCallMap[name]) toolCallMap[name] = { count: 0, editors: new Set(), sessions: new Set(), folders: new Set() };
       toolCallMap[name].count++;
       toolCallMap[name].editors.add(row.source);
       toolCallMap[name].sessions.add(row.chat_id);
+      if (row.folder) toolCallMap[name].folders.add(row.folder);
 
       if (!sessionMap[row.chat_id]) {
         sessionMap[row.chat_id] = {
@@ -525,6 +526,7 @@ app.get('/api/mcps', async (req, res) => {
         count: data.count,
         editors: [...data.editors],
         sessionCount: data.sessions.size,
+        folders: [...data.folders],
       }))
       .sort((a, b) => b.count - a.count);
 
@@ -636,6 +638,65 @@ app.get('/api/mcps', async (req, res) => {
       .sort((a, b) => b.totalToolCalls - a.totalToolCalls)
       .slice(0, 50);
 
+    // 7. Per-project MCP stats
+    const projects = cache.getCachedProjects({ hiddenFolders: getHiddenFolders() });
+    const projectMcpConfigs = [
+      { file: '.mcp.json', editor: 'claude-code', label: 'Claude Code' },
+      { file: '.cursor/mcp.json', editor: 'cursor', label: 'Cursor' },
+      { file: '.vscode/mcp.json', editor: 'vscode', label: 'VS Code' },
+      { file: '.gemini/settings.json', editor: 'gemini-cli', label: 'Gemini CLI' },
+      { file: '.kiro/settings/mcp.json', editor: 'kiro', label: 'Kiro' },
+    ];
+
+    const projectMcps = [];
+    for (const proj of projects) {
+      if (!proj.folder) continue;
+      const configs = [];
+      for (const pc of projectMcpConfigs) {
+        const configPath = path.join(proj.folder, pc.file);
+        if (!fs.existsSync(configPath)) continue;
+        try {
+          const raw = fs.readFileSync(configPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          const mcpServers = parsed.mcpServers || parsed.mcp_servers || parsed.servers || {};
+          configs.push({
+            file: pc.file,
+            editor: pc.editor,
+            editorLabel: pc.label,
+            serverCount: Object.keys(mcpServers).length,
+            serverNames: Object.keys(mcpServers),
+          });
+        } catch { /* skip invalid configs */ }
+      }
+      if (configs.length === 0) continue;
+
+      // Count MCP tool calls from this project's sessions
+      const projToolCalls = toolRows.filter(r => r.folder === proj.folder);
+      const mcpToolCallCount = projToolCalls.filter(r => {
+        const n = r.tool_name;
+        return n.startsWith('mcp') || n.includes('__');
+      }).length;
+
+      // Which configured servers are used (matched to tool calls)
+      const configuredServerNames = new Set(configs.flatMap(c => c.serverNames));
+      const matchedServerNames = [];
+      for (const sn of configuredServerNames) {
+        if (matchedTools[sn]) matchedServerNames.push(sn);
+      }
+
+      projectMcps.push({
+        folder: proj.folder,
+        name: proj.name,
+        configs,
+        totalServers: [...configuredServerNames].length,
+        matchedServers: matchedServerNames.length,
+        mcpToolCalls: mcpToolCallCount,
+        totalSessions: proj.totalSessions || 0,
+      });
+    }
+
+    projectMcps.sort((a, b) => b.totalServers - a.totalServers || b.mcpToolCalls - a.mcpToolCalls);
+
     // Strip _env from response (security)
     const safeServers = servers.map(({ _env, ...rest }) => rest);
 
@@ -644,6 +705,7 @@ app.get('/api/mcps', async (req, res) => {
       toolCalls,
       matchedTools,
       topSessions,
+      projectMcps,
       summary: {
         totalServers: servers.length,
         totalToolCalls: toolRows.length,

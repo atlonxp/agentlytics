@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plug, Server, Wrench, Terminal, Globe, FolderOpen, Search, ChevronDown, ChevronRight, Hash, Layers, ArrowUpRight, Ban, BarChart3 } from 'lucide-react'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
@@ -110,10 +111,13 @@ function ServerCard({ server, matchedTools }) {
 }
 
 export default function MCPs() {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('servers') // servers | tools | sessions
+  const [toolProjectFilter, setToolProjectFilter] = useState('')
+  const [toolServerFilter, setToolServerFilter] = useState('')
   const { dark } = useTheme()
   const txtColor = dark ? '#a0a0a0' : '#444'
   const txtDim = dark ? '#555' : '#999'
@@ -132,11 +136,44 @@ export default function MCPs() {
     )
   }, [data, search])
 
+  // Resolve tool name → matched server name
+  const toolServerMap = useMemo(() => {
+    if (!data) return {}
+    const map = {}
+    for (const [serverName, tools] of Object.entries(data.matchedTools || {})) {
+      for (const t of tools) map[t.name] = serverName
+    }
+    return map
+  }, [data])
+
+  // Unique projects and servers for filter dropdowns
+  const toolFilterOptions = useMemo(() => {
+    if (!data) return { projects: [], servers: [] }
+    const projectSet = new Set()
+    const serverSet = new Set()
+    for (const t of data.toolCalls) {
+      for (const f of (t.folders || [])) projectSet.add(f)
+      const sn = toolServerMap[t.name]
+      if (sn) serverSet.add(sn); else serverSet.add('__builtin__')
+    }
+    return {
+      projects: [...projectSet].sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop())),
+      servers: [...serverSet].filter(s => s !== '__builtin__').sort(),
+      hasBuiltIn: serverSet.has('__builtin__'),
+    }
+  }, [data, toolServerMap])
+
   const filteredTools = useMemo(() => {
     if (!data) return []
     const q = search.toLowerCase()
-    return data.toolCalls.filter(t => !q || t.name.toLowerCase().includes(q))
-  }, [data, search])
+    return data.toolCalls.filter(t => {
+      if (q && !t.name.toLowerCase().includes(q)) return false
+      if (toolProjectFilter && !(t.folders || []).includes(toolProjectFilter)) return false
+      if (toolServerFilter === '__builtin__' && toolServerMap[t.name]) return false
+      if (toolServerFilter && toolServerFilter !== '__builtin__' && toolServerMap[t.name] !== toolServerFilter) return false
+      return true
+    })
+  }, [data, search, toolProjectFilter, toolServerFilter, toolServerMap])
 
   const filteredSessions = useMemo(() => {
     if (!data) return []
@@ -415,6 +452,79 @@ export default function MCPs() {
         </div>
       </div>
 
+      {/* Per-Project MCP Configs */}
+      {data.projectMcps && data.projectMcps.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--c-border)' }}>
+            <SectionTitle>MCP servers by project <span style={{ color: 'var(--c-text3)' }}>({data.projectMcps.length})</span></SectionTitle>
+          </div>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
+                <th className="text-left px-3 py-2 font-medium">project</th>
+                <th className="text-left px-3 py-2 font-medium">config</th>
+                <th className="text-left px-3 py-2 font-medium">servers</th>
+                <th className="text-right px-3 py-2 font-medium">mcp calls</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.projectMcps.map(p =>
+                p.configs.map((c, ci) => (
+                  <tr
+                    key={`${p.folder}-${c.file}`}
+                    className="transition"
+                    style={{ borderBottom: '1px solid var(--c-border)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    {ci === 0 ? (
+                      <td className="px-3 py-2" rowSpan={p.configs.length}>
+                        <span
+                          className="flex items-center gap-1.5 cursor-pointer hover:underline"
+                          style={{ color: 'var(--c-accent)' }}
+                          onClick={() => navigate(`/projects/detail?folder=${encodeURIComponent(p.folder)}`)}
+                        >
+                          <FolderOpen size={11} />
+                          <span className="font-medium truncate max-w-[200px]">{p.name}</span>
+                        </span>
+                      </td>
+                    ) : null}
+                    <td className="px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <EditorIcon source={c.editor} size={12} />
+                        <span style={{ color: 'var(--c-text2)' }}>{c.file}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {c.serverNames.map(sn => (
+                          <span key={sn} className="text-[11px] px-1.5 py-px" style={{
+                            background: matchedTools[sn] ? 'rgba(99,102,241,0.12)' : 'var(--c-bg3)',
+                            color: matchedTools[sn] ? '#818cf8' : 'var(--c-text2)',
+                          }}>
+                            <Plug size={8} className="inline mr-0.5" />{sn}
+                            {matchedTools[sn] && <span className="ml-1 opacity-60">{matchedTools[sn].reduce((s, t) => s + t.count, 0)}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    {ci === 0 ? (
+                      <td className="px-3 py-2 text-right" rowSpan={p.configs.length}>
+                        {p.mcpToolCalls > 0 ? (
+                          <span className="font-semibold" style={{ color: 'var(--c-white)' }}>{formatNumber(p.mcpToolCalls)}</span>
+                        ) : (
+                          <span style={{ color: 'var(--c-text3)' }}>—</span>
+                        )}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Tabs + Search */}
       <div className="flex items-center gap-3">
         <div className="flex gap-0.5">
@@ -434,6 +544,33 @@ export default function MCPs() {
           ))}
         </div>
         <div className="flex-1" />
+        {tab === 'tools' && (
+          <>
+            <select
+              value={toolProjectFilter}
+              onChange={e => setToolProjectFilter(e.target.value)}
+              className="px-2 py-1 text-[12px] outline-none"
+              style={{ background: 'var(--c-bg3)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}
+            >
+              <option value="">All Projects</option>
+              {toolFilterOptions.projects.map(f => (
+                <option key={f} value={f}>{f.split('/').pop()}</option>
+              ))}
+            </select>
+            <select
+              value={toolServerFilter}
+              onChange={e => setToolServerFilter(e.target.value)}
+              className="px-2 py-1 text-[12px] outline-none"
+              style={{ background: 'var(--c-bg3)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}
+            >
+              <option value="">All Servers</option>
+              {toolFilterOptions.hasBuiltIn && <option value="__builtin__">built-in</option>}
+              {toolFilterOptions.servers.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </>
+        )}
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-text3)' }} />
           <input
@@ -489,28 +626,38 @@ export default function MCPs() {
             </thead>
             <tbody>
               {filteredTools.slice(0, 100).map((t, i) => {
-                const serverMatch = Object.entries(matchedTools).find(([, tools]) => tools.some(mt => mt.name === t.name))
+                const sn = toolServerMap[t.name]
                 return (
-                  <tr key={t.name} style={{ borderTop: i > 0 ? '1px solid var(--c-border)' : undefined, background: i % 2 === 0 ? 'var(--c-bg)' : 'var(--c-card)' }}>
-                    <td className="px-3 py-1.5">
-                      <span style={{ fontFamily: MONO, color: 'var(--c-text)' }}>{t.name}</span>
+                  <tr
+                    key={t.name}
+                    className="transition"
+                    style={{ borderBottom: '1px solid var(--c-border)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td className="px-3 py-2">
+                      <span style={{ fontFamily: MONO, color: 'var(--c-white)' }}>{t.name}</span>
                     </td>
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-2 text-right">
                       <span className="font-semibold" style={{ color: 'var(--c-white)' }}>{formatNumber(t.count)}</span>
                     </td>
-                    <td className="px-3 py-1.5 text-right" style={{ color: 'var(--c-text3)' }}>{t.sessionCount}</td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-0.5">
-                        {t.editors.map(e => <EditorIcon key={e} source={e} size={10} />)}
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--c-text2)' }}>{t.sessionCount}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        {t.editors.map(e => (
+                          <span key={e} className="inline-flex items-center gap-0.5">
+                            <EditorIcon source={e} size={12} />
+                          </span>
+                        ))}
                       </div>
                     </td>
-                    <td className="px-3 py-1.5">
-                      {serverMatch ? (
-                        <span className="text-[10px] px-1 py-px" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
-                          <Plug size={9} className="inline mr-0.5" />{serverMatch[0]}
+                    <td className="px-3 py-2">
+                      {sn ? (
+                        <span className="text-[11px] px-1.5 py-px" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
+                          <Plug size={9} className="inline mr-0.5" />{sn}
                         </span>
                       ) : (
-                        <span className="text-[10px]" style={{ color: 'var(--c-text3)', opacity: 0.3 }}>—</span>
+                        <span className="text-[11px]" style={{ color: 'var(--c-text2)' }}>built-in</span>
                       )}
                     </td>
                   </tr>
@@ -543,32 +690,40 @@ export default function MCPs() {
               {filteredSessions.map((s, i) => {
                 const topTools = Object.entries(s.tools).sort((a, b) => b[1] - a[1]).slice(0, 3)
                 return (
-                  <tr key={s.composerId} style={{ borderTop: i > 0 ? '1px solid var(--c-border)' : undefined, background: i % 2 === 0 ? 'var(--c-bg)' : 'var(--c-card)' }}>
-                    <td className="px-3 py-1.5 max-w-[220px]">
-                      <span className="truncate block" style={{ color: 'var(--c-text)' }}>
+                  <tr
+                    key={s.composerId}
+                    className="transition"
+                    style={{ borderBottom: '1px solid var(--c-border)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td className="px-3 py-2 max-w-[220px] font-medium">
+                      <span className="truncate block" style={{ color: 'var(--c-white)' }}>
                         {s.name || <span style={{ color: 'var(--c-text3)', fontStyle: 'italic' }}>Untitled</span>}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-2">
                       <span className="flex items-center gap-1">
                         <EditorIcon source={s.source} size={12} />
-                        <span style={{ color: 'var(--c-text3)' }}>{editorLabel(s.source)}</span>
+                        <span style={{ color: 'var(--c-text2)' }}>{editorLabel(s.source)}</span>
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 max-w-[150px]">
+                    <td className="px-3 py-2 truncate max-w-[160px]" title={s.folder}>
                       {s.folder ? (
-                        <span className="flex items-center gap-1 truncate text-[11px]" style={{ color: 'var(--c-text3)' }}>
-                          <FolderOpen size={10} />{s.folder.split(/[/\\]/).pop()}
-                        </span>
-                      ) : <span style={{ color: 'var(--c-text3)', opacity: 0.3 }}>—</span>}
+                        <span
+                          className="cursor-pointer hover:underline"
+                          style={{ color: 'var(--c-accent)' }}
+                          onClick={e => { e.stopPropagation(); navigate(`/projects/detail?folder=${encodeURIComponent(s.folder)}`) }}
+                        >{s.folder.split(/[/\\]/).pop()}</span>
+                      ) : <span style={{ color: 'var(--c-text3)' }}>—</span>}
                     </td>
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-2 text-right">
                       <span className="font-semibold" style={{ color: 'var(--c-white)' }}>{formatNumber(s.totalToolCalls)}</span>
                     </td>
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-2">
                       <div className="flex gap-0.5 flex-wrap">
                         {topTools.map(([name, count]) => (
-                          <span key={name} className="text-[10px] px-1 py-px" style={{ background: 'var(--c-bg3)', color: 'var(--c-text3)', fontFamily: MONO }}>
+                          <span key={name} className="text-[10px] px-1 py-px" style={{ background: 'var(--c-bg3)', color: 'var(--c-text2)', fontFamily: MONO }}>
                             {name} <span style={{ opacity: 0.5 }}>×{count}</span>
                           </span>
                         ))}

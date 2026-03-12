@@ -23,7 +23,9 @@
     "ui/package-lock.json",
     "ui/vite.config.js",
     "ui/eslint.config.js",
-    "README.md"
+    "README.md",
+    "mod.ts",
+    "deno.json"
   ],
   "scripts": {
     "start": "node index.js",

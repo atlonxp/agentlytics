@@ -14,6 +14,7 @@
   <a href="#supported-editors"><img src="https://img.shields.io/badge/editors-16-818cf8" alt="editors"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520.19%20%7C%20%E2%89%A522.12-brightgreen" alt="node"></a>
+  <a href="https://deno.land"><img src="https://img.shields.io/badge/deno-%E2%89%A52.0-000?logo=deno" alt="deno"></a>
 </p>
 
 <p align="center">
@@ -42,6 +43,51 @@ npx agentlytics
 ```
 
 Opens at **http://localhost:4637**. Requires Node.js ≥ 20.19 or ≥ 22.12, macOS. No data ever leaves your machine.
+
+### Deno (Sandboxed)
+
+Run a lightweight, zero-dependency analytics scan with Deno's permission sandbox — directly from a URL, no install needed:
+
+```bash
+deno run --allow-read --allow-env https://raw.githubusercontent.com/f/agentlytics/main/mod.ts
+```
+
+Only `--allow-read` and `--allow-env` are required. No network access, no file writes, no code execution — just reads your local editor data and prints a summary.
+
+```
+  (● ●) [● ●]   Agentlytics — Deno Sandboxed Edition
+  {● ●} <● ●>   Lightweight CLI analytics for AI coding agents
+
+  ✓ Claude Code            8 sessions
+  ✓ VS Code                23 sessions
+  ✓ VS Code Insiders       66 sessions
+  ● Cursor                 detected
+  ✓ Codex CLI              3 sessions
+  ...
+
+  Summary
+  Sessions           109
+  Messages           459
+  Projects           18
+  Editors            7 of 15 checked
+  Date range         2025-04-02 → 2026-03-09
+```
+
+Add `--json` for machine-readable output:
+
+```bash
+deno run --allow-read --allow-env mod.ts --json
+```
+
+If you've cloned the repo, you can also use Deno tasks for the full dashboard:
+
+```bash
+deno task start       # Full dashboard (all permissions)
+deno task scan        # Lightweight CLI scan
+deno task scan:json   # JSON output
+```
+
+### Node.js
 
 ```
 $ npx agentlytics
@@ -186,7 +232,11 @@ Editor files/APIs → editors/*.js → cache.js (SQLite) → server.js (REST) �
 Relay:  join clients → POST /relay/sync → relay.db (SQLite) → MCP server → AI clients
 ```
 
-All data is normalized into a local SQLite cache at `~/.agentlytics/cache.db`. The Express server exposes read-only REST endpoints consumed by the React frontend. Relay data is stored separately in `~/.agentlytics/relay.db`.
+```
+Deno:   Editor files → mod.ts (zero deps) → stdout (CLI/JSON)
+```
+
+All data is normalized into a local SQLite cache at `~/.agentlytics/cache.db`. The Express server exposes read-only REST endpoints consumed by the React frontend. Relay data is stored separately in `~/.agentlytics/relay.db`. The Deno sandboxed edition (`mod.ts`) bypasses SQLite entirely and reads editor files directly for a lightweight, permission-minimal CLI report.
 
 ## API
 

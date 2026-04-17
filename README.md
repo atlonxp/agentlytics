@@ -125,28 +125,71 @@ npx agentlytics --collect
 
 ### Daemon mode (macOS)
 
-Run Agentlytics as a background service that collects on a timer and keeps the dashboard available at `http://localhost:4637`. On macOS, it installs as a `launchd` LaunchAgent that starts at login and restarts on crash.
+Run Agentlytics as a background service that collects on a timer and keeps the dashboard available at `http://localhost:4637`. On macOS, the daemon installs as a `launchd` LaunchAgent that starts at login and auto-restarts on crash.
+
+#### Why not `npx`/`bunx`?
+
+`daemon install` writes the absolute path of the current `index.js` into the LaunchAgent plist. `npx`/`bunx` run the CLI from a temporary cache that may be garbage-collected, which would break the plist. Install from one of the two stable sources below.
+
+#### Option A — Install globally from npm
 
 ```bash
-npx agentlytics daemon install    # install LaunchAgent & start (default: port 4637, interval 300s)
-npx agentlytics daemon status     # show install / running state
-npx agentlytics daemon logs       # tail daemon log
-npx agentlytics daemon restart    # stop + start
-npx agentlytics daemon stop       # stop (stays stopped until start/reboot)
-npx agentlytics daemon start      # start installed service
-npx agentlytics daemon uninstall  # stop & remove LaunchAgent
+npm install -g agentlytics        # or: pnpm add -g agentlytics / bun add -g agentlytics
+agentlytics daemon install        # writes plist + starts service
+agentlytics daemon status         # verify
 ```
 
-Customize port and collect interval:
+The UI is built on first run. After a version upgrade (`npm update -g agentlytics`), re-run `agentlytics daemon install` so the plist points at the new install path.
+
+#### Option B — Build from source
 
 ```bash
-npx agentlytics daemon install --port 4639 --interval 60
+git clone https://github.com/f/agentlytics.git
+cd agentlytics
+npm install                       # installs CLI dependencies
+npm run build                     # builds the dashboard UI into public/
+node index.js daemon install      # writes plist + starts service
+node index.js daemon status       # verify
 ```
 
-Files:
+Keep the repo in a stable location (e.g. `~/workspaces/agentlytics`) — moving or deleting it breaks the plist. If you move it, run `daemon uninstall` then `daemon install` from the new location.
+
+#### Subcommands
+
+```bash
+agentlytics daemon install    # install LaunchAgent & start (default: port 4637, interval 300s)
+agentlytics daemon status     # show install / running state
+agentlytics daemon logs       # tail daemon log (--no-follow for snapshot)
+agentlytics daemon restart    # stop + start
+agentlytics daemon stop       # stop (stays stopped until start/reboot)
+agentlytics daemon start      # start installed service
+agentlytics daemon uninstall  # stop & remove LaunchAgent
+```
+
+Custom port / collect interval (also accepted as `PORT` and `AGENTLYTICS_DAEMON_INTERVAL` env vars; min interval 30s):
+
+```bash
+agentlytics daemon install --port 4639 --interval 60
+```
+
+#### Behavior
+
+- **RunAtLoad** — starts automatically on login.
+- **KeepAlive (Crashed only)** — auto-restarts after an abnormal exit (10s throttle). A clean `stop` stays stopped until you `start` again or reboot.
+- **Single instance** — a pidfile at `~/.agentlytics/daemon.pid` prevents two daemons from racing on the SQLite cache.
+
+#### Files
+
 - Plist: `~/Library/LaunchAgents/com.github.f.agentlytics.plist`
 - Log:   `~/Library/Logs/agentlytics/daemon.log`
 - Pid:   `~/.agentlytics/daemon.pid`
+- Cache: `~/.agentlytics/cache.db`
+
+#### Troubleshooting
+
+- **`daemon install` reports "not responding"** — check `agentlytics daemon logs`. Common cause: port already in use by another app.
+- **Service keeps restarting every 10s** — the daemon is crashing on startup; `daemon logs` will show the error. Usually a missing UI build (run `npm run build` from source) or a port conflict.
+- **Port conflict with foreground `agentlytics`** — running `agentlytics` interactively while the daemon is active will kill the daemon (the interactive mode reclaims port 4637 by sending SIGTERM to whatever owns it). Because SIGTERM is a clean exit, launchd will not auto-restart. Run `agentlytics daemon start` once you're done with the interactive session.
 
 ## Features
 

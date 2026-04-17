@@ -123,6 +123,31 @@ npx agentlytics --collect
 # or: pnpm dlx agentlytics --collect
 ```
 
+### Daemon mode (macOS)
+
+Run Agentlytics as a background service that collects on a timer and keeps the dashboard available at `http://localhost:4637`. On macOS, it installs as a `launchd` LaunchAgent that starts at login and restarts on crash.
+
+```bash
+npx agentlytics daemon install    # install LaunchAgent & start (default: port 4637, interval 300s)
+npx agentlytics daemon status     # show install / running state
+npx agentlytics daemon logs       # tail daemon log
+npx agentlytics daemon restart    # stop + start
+npx agentlytics daemon stop       # stop (stays stopped until start/reboot)
+npx agentlytics daemon start      # start installed service
+npx agentlytics daemon uninstall  # stop & remove LaunchAgent
+```
+
+Customize port and collect interval:
+
+```bash
+npx agentlytics daemon install --port 4639 --interval 60
+```
+
+Files:
+- Plist: `~/Library/LaunchAgents/com.github.f.agentlytics.plist`
+- Log:   `~/Library/Logs/agentlytics/daemon.log`
+- Pid:   `~/.agentlytics/daemon.pid`
+
 ## Features
 
 - **Dashboard** — KPIs, activity heatmap, editor breakdown, coding streaks, token economy, peak hours, top models & tools

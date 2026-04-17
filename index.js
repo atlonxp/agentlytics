@@ -47,6 +47,21 @@ const isUiDev = process.argv.includes('--ui-dev');
 const isRelay = process.argv.includes('--relay');
 const joinIndex = process.argv.indexOf('--join');
 const isJoin = joinIndex !== -1;
+const isDaemon = process.argv[2] === 'daemon';
+const daemonSub = isDaemon ? process.argv[3] : null;
+const isDaemonLifecycle = isDaemon && daemonSub && !daemonSub.startsWith('--');
+
+// ── Daemon lifecycle commands (lightweight, no UI/cache setup) ──
+if (isDaemonLifecycle) {
+  const { runDaemonCommand } = require('./daemon');
+  runDaemonCommand(daemonSub, process.argv)
+    .then((code) => process.exit(code || 0))
+    .catch((e) => {
+      console.error(e && e.message || e);
+      process.exit(1);
+    });
+  return;
+}
 
 // ── Relay mode ───────────────────────────────────────────────
 if (isRelay) {
@@ -286,6 +301,16 @@ const WINDSURF_VARIANTS = [
 
 // Initialize cache DB
 cache.initDb();
+
+// ── Daemon mode ──────────────────────────────────────────────
+if (isDaemon) {
+  const { startDaemon, parseArgs } = require('./daemon');
+  startDaemon(parseArgs(process.argv)).catch((e) => {
+    console.error(`[daemon] fatal: ${e && e.stack || e}`);
+    process.exit(1);
+  });
+  return;
+}
 
 // ── Detect editors & collect sessions ───────────────────────
 const { editors: editorModules, editorLabels } = require('./editors');

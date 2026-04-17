@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "cache.js",
+    "daemon.js",
     "server.js",
     "share-image.js",
     "relay-server.js",

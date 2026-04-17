@@ -288,7 +288,7 @@ export default function DeepAnalysis({ overview }) {
             <KpiCard label="tool calls" value={formatNumber(data.totalToolCalls)} sub={`${insights.toolsPerSession}/session`} />
             <KpiCard label="total tokens" value={formatNumber(insights.totalTok)} sub={`${formatNumber(insights.tokPerMsg)}/msg`} />
             <KpiCard label="you wrote" value={formatNumber(data.totalUserChars)} sub={`AI: ${insights.aiVsHuman}\u00d7 more`} />
-            <KpiCard label="est. cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} />
+            <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} />
           </div>
 
           {/* Token flow + Insights row */}

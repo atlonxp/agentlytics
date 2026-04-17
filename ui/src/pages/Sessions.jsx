@@ -478,7 +478,7 @@ export default function Sessions({ overview }) {
                 <th className="text-left py-2 px-3 font-medium">mode</th>
                 <th className="text-left py-2 px-3 font-medium">model</th>
                 <th className="text-left py-2 px-3 font-medium">context</th>
-                <th className="text-right py-2 px-3 font-medium">est. cost</th>
+                <th className="text-right py-2 px-3 font-medium">cost</th>
                 <th className="text-left py-2 px-3 font-medium">updated</th>
               </tr>
             </thead>

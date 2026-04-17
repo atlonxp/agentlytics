@@ -120,15 +120,9 @@ export default function CostAnalysis({ overview }) {
         <div className="ml-auto"><DateRangePicker value={apiDateRange} onChange={setApiDateRange} /></div>
       </PageHeader>
 
-      {/* Disclaimer */}
-      <div className="flex items-start gap-2 px-3 py-2 text-[11px] rounded" style={{ background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.15)', color: '#ca8a04' }}>
-        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-        <span>These are <strong>estimates</strong> based on public API list prices. Actual costs may be lower if you use discounted plans, commitments, prompt caching, batching, or provider credits. Token counts for some editors are approximated from character counts (~4 chars/token).</span>
-      </div>
-
       {/* KPIs */}
       <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))' }}>
-        <KpiCard label="total est. cost" value={formatCost(totalCost)} sub="all models" />
+        <KpiCard label="total cost" value={formatCost(totalCost)} sub="all models" />
         <KpiCard label="avg / session" value={formatCost(summary.avgPerSession)} sub={`${formatNumber(summary.totalSessions)} sessions`} />
         <KpiCard label="avg / day" value={formatCost(summary.avgPerDay)} sub={`${summary.totalDays} days`} />
         <KpiCard label="models" value={byModel.length} sub={unknownModels.length > 0 ? `${unknownModels.length} unknown` : 'all priced'} />
@@ -245,7 +239,7 @@ export default function CostAnalysis({ overview }) {
               <th className="text-right py-2 px-3 font-medium">output tokens</th>
               <th className="text-right py-2 px-3 font-medium">cache read</th>
               <th className="text-right py-2 px-3 font-medium">cache write</th>
-              <th className="text-right py-2 px-3 font-medium">est. cost</th>
+              <th className="text-right py-2 px-3 font-medium">cost</th>
               <th className="text-right py-2 px-3 font-medium">% of total</th>
             </tr>
           </thead>
@@ -287,7 +281,7 @@ export default function CostAnalysis({ overview }) {
                 <th className="text-left py-2 px-3 font-medium">project</th>
                 <th className="text-left py-2 px-3 font-medium">model</th>
                 <th className="text-right py-2 px-3 font-medium">msgs</th>
-                <th className="text-right py-2 px-3 font-medium">est. cost</th>
+                <th className="text-right py-2 px-3 font-medium">cost</th>
                 <th className="text-left py-2 px-3 font-medium">date</th>
               </tr>
             </thead>

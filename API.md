@@ -219,7 +219,7 @@ Aggregated tool call frequency, model distribution, and token breakdown.
 
 ## `GET /api/costs`
 
-Estimated API costs based on token usage and model pricing.
+API costs based on token usage and model pricing.
 
 **Query params:**
 - `editor` — filter by editor source

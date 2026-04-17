@@ -73,7 +73,7 @@ export default function Projects({ overview }) {
         <KpiCard label="sessions" value={formatNumber(totalSessions)} onClick={() => navigate('/sessions')} />
         <KpiCard label="messages" value={formatNumber(totalMessages)} />
         <KpiCard label="tokens" value={formatNumber(totalTokens)} />
-        <KpiCard label="est. cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} />
+        <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} />
       </div>
 
       {/* Charts row */}

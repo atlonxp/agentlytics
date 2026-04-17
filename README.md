@@ -127,7 +127,7 @@ npx agentlytics --collect
 
 - **Dashboard** — KPIs, activity heatmap, editor breakdown, coding streaks, token economy, peak hours, top models & tools
 - **Sessions** — Search, filter, and read full conversations with syntax highlighting. Open any chat in a slide-over sidebar.
-- **Costs** — Estimate your AI spend broken down by model, editor, project, and month. Spot your most expensive sessions.
+- **Costs** — Track your AI spend broken down by model, editor, project, and month. Spot your most expensive sessions.
 - **Projects** — Per-project analytics: sessions, messages, tokens, models, editor breakdown, and drill-down detail views
 - **Deep Analysis** — Tool frequency heatmaps, model distribution, token breakdown, and filterable drill-down analytics
 - **Compare** — Side-by-side editor comparison with efficiency ratios, token usage, and session patterns
@@ -269,7 +269,7 @@ All endpoints accept optional `editor` filter. See **[API.md](API.md)** for full
 - [ ] **LLM-powered insights** — Use an LLM to analyze session patterns, generate summaries, detect coding habits, and surface actionable recommendations
 - [ ] **Linux & Windows support** — Adapt editor paths for non-macOS platforms
 - [ ] **Export & reports** — PDF/CSV export of analytics and session data
-- [x] **Cost tracking** — Estimate API costs per editor/model based on token usage
+- [x] **Cost tracking** — Track API costs per editor/model based on token usage
 
 ## Contributions Needed
 

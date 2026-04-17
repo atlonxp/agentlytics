@@ -476,7 +476,7 @@ function ProjectCard({ project, isExpanded, onToggle, onOpenFile, onOpenConfig, 
             <div className="flex-1 pr-3">phase</div>
             <div style={{ width: 100, flexShrink: 0, paddingRight: 12 }}>plans</div>
             <div style={{ width: 88, flexShrink: 0 }}>artifacts</div>
-            <div style={{ width: 64, flexShrink: 0, textAlign: 'right' }}>est. cost</div>
+            <div style={{ width: 64, flexShrink: 0, textAlign: 'right' }}>cost</div>
             <div style={{ width: 56, flexShrink: 0, textAlign: 'right' }}>updated</div>
           </div>
 

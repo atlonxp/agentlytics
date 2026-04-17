@@ -153,7 +153,7 @@ export default function ProjectDetail() {
           <KpiCard label="cache read" value={formatNumber(project.totalCacheRead)} sub={`write: ${formatNumber(project.totalCacheWrite)}`} />
         )}
         <KpiCard label="you wrote" value={formatNumber(project.totalUserChars)} sub={`AI: ${formatNumber(project.totalAssistantChars)}`} />
-        <KpiCard label="est. cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
+        <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
       </div>
 
       {/* Charts row */}
@@ -265,7 +265,7 @@ export default function ProjectDetail() {
                 <th className="text-left py-2 px-3 font-medium">mode</th>
                 <th className="text-left py-2 px-3 font-medium">model</th>
                 <th className="text-left py-2 px-3 font-medium">context</th>
-                <th className="text-right py-2 px-3 font-medium">est. cost</th>
+                <th className="text-right py-2 px-3 font-medium">cost</th>
                 <th className="text-left py-2 px-3 font-medium">updated</th>
               </tr>
             </thead>

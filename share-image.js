@@ -172,7 +172,7 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
     { label: 'streak', value: `${streaks.current || 0}d` },
   ];
   if (show.costs && totalCost > 0) {
-    kpiItems.push({ label: 'est. cost', value: fmtCost(totalCost) });
+    kpiItems.push({ label: 'cost', value: fmtCost(totalCost) });
   }
   const kpiW = (W - pad * 2 - (kpiItems.length - 1) * 8) / kpiItems.length;
   kpiItems.forEach((item, i) => {
@@ -236,7 +236,7 @@ function generateShareSvg(overview, stats, costs, opts = {}) {
         out += `<text x="${sx + 128 + e.barW}" y="${by + 14}" fill="${t.text3}" font-size="11" font-family=${F}>${e.count}</text>`;
       });
     } else if (name === 'costs') {
-      out += `<text x="${sx}" y="${sy + 14}" fill="${t.text4}" font-size="11" font-family=${F}># est. costs by editor</text>`;
+      out += `<text x="${sx}" y="${sy + 14}" fill="${t.text4}" font-size="11" font-family=${F}># costs by editor</text>`;
       costBarsArr.forEach((c, i) => {
         const by = sy + 26 + i * 26;
         out += `<text x="${sx}" y="${by + 14}" fill="${t.text2}" font-size="12" font-family=${F}>${esc(c.label)}</text>`;

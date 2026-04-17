@@ -254,7 +254,7 @@ export default function Dashboard({ overview }) {
           <KpiCard label="cache write" value={formatNumber(tk.cacheWrite)} />
           <KpiCard label="out/in ratio" value={`${outputInputRatio}×`} sub={<span className="flex items-center gap-0.5"><Zap size={8} /> efficiency</span>} />
           <KpiCard label="you wrote" value={formatNumber(tk.userChars)} sub={`AI wrote ${formatNumber(tk.assistantChars)}`} />
-          <KpiCard label="est. cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '—'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
+          <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '—'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
         </div>
       )}
 
@@ -443,7 +443,7 @@ export default function Dashboard({ overview }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
         {stats && stats.topModels.length > 0 && (
           <div className="card p-3">
-            <SectionTitle>top models {costs && costs.totalCost > 0 && <span style={{ color: 'var(--c-text3)' }}>({formatCost(costs.totalCost)} est.)</span>}</SectionTitle>
+            <SectionTitle>top models {costs && costs.totalCost > 0 && <span style={{ color: 'var(--c-text3)' }}>({formatCost(costs.totalCost)})</span>}</SectionTitle>
             <div className="space-y-1">
               {stats.topModels.map((m, i) => {
                 const maxM = stats.topModels[0].count

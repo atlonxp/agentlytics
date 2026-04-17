@@ -4,7 +4,7 @@ import { fetchShareImage, fetchProjects } from '../lib/api'
 
 const TOGGLE_ITEMS = [
   { key: 'showEditors', label: 'Editors', icon: BarChart3 },
-  { key: 'showCosts', label: 'Est. Costs', icon: DollarSign },
+  { key: 'showCosts', label: 'Costs', icon: DollarSign },
   { key: 'showHours', label: 'Peak Hours', icon: Clock },
   { key: 'showModels', label: 'Top Models', icon: Cpu },
   { key: 'showTokens', label: 'Token Footer', icon: Braces },

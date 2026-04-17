@@ -142,7 +142,7 @@ export default function TokenTimeline({ messages, createdAt, lastUpdatedAt, onSc
         <Activity size={12} style={{ color: 'var(--c-accent)' }} />
         <span className="font-medium">Token Timeline</span>
         <span style={{ color: 'var(--c-text3)' }}>
-          ({formatNumber(totalTokens)} tokens{!hasRealTokens ? ', est.' : ''})
+          ({formatNumber(totalTokens)} tokens)
         </span>
         {durationLabel && (
           <span className="inline-flex items-center gap-1" style={{ color: 'var(--c-text3)' }}>

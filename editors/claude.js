@@ -11,38 +11,95 @@ const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 const name = 'claude';
 
+// Return all project-root directories under ~/.claude matching `projects*`.
+// Supports user-split archives like `projects_dec16`, `projects_old`, etc.
+function getProjectRoots() {
+  if (!fs.existsSync(CLAUDE_DIR)) return [];
+  const roots = [];
+  let entries;
+  try { entries = fs.readdirSync(CLAUDE_DIR); } catch { return roots; }
+  for (const entry of entries) {
+    if (!entry.startsWith('projects')) continue;
+    const p = path.join(CLAUDE_DIR, entry);
+    try { if (fs.statSync(p).isDirectory()) roots.push(p); } catch {}
+  }
+  return roots;
+}
+
 function getChats() {
   const chats = [];
-  if (!fs.existsSync(PROJECTS_DIR)) return chats;
 
-  for (const projDir of fs.readdirSync(PROJECTS_DIR)) {
-    const dir = path.join(PROJECTS_DIR, projDir);
-    if (!fs.statSync(dir).isDirectory()) continue;
+  for (const projectsRoot of getProjectRoots()) {
+    let projDirs;
+    try { projDirs = fs.readdirSync(projectsRoot); } catch { continue; }
 
-    // Decode folder path from dir name (e.g. -Users-fka-Code-foo -> /Users/fka/Code/foo)
-    const decodedFolder = projDir.replace(/-/g, '/');
+    for (const projDir of projDirs) {
+      const dir = path.join(projectsRoot, projDir);
+      try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
 
-    // Read sessions-index.json for indexed sessions
-    const indexPath = path.join(dir, 'sessions-index.json');
-    const indexed = new Map();
-    try {
-      const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-      for (const entry of index.entries || []) {
-        indexed.set(entry.sessionId, entry);
+      // Decode folder path from dir name (e.g. -Users-fka-Code-foo -> /Users/fka/Code/foo)
+      const decodedFolder = projDir.replace(/-/g, '/');
+
+      // Read sessions-index.json for indexed sessions
+      const indexPath = path.join(dir, 'sessions-index.json');
+      const indexed = new Map();
+      try {
+        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+        for (const entry of index.entries || []) {
+          indexed.set(entry.sessionId, entry);
+        }
+      } catch { /* no index */ }
+
+      // Scan all .jsonl files on disk (some may not be in the index)
+      let files;
+      try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
+
+      for (const file of files) {
+        const sessionId = file.replace('.jsonl', '');
+        const fullPath = path.join(dir, file);
+        const entry = indexed.get(sessionId);
+
+        if (entry) {
+          // Use index metadata
+          chats.push({
+            source: 'claude-code',
+            composerId: sessionId,
+            name: cleanPrompt(entry.firstPrompt),
+            createdAt: entry.created ? new Date(entry.created).getTime() : null,
+            lastUpdatedAt: entry.modified ? new Date(entry.modified).getTime() : null,
+            mode: 'claude',
+            folder: entry.projectPath || decodedFolder,
+            encrypted: false,
+            bubbleCount: entry.messageCount || 0,
+            _fullPath: fullPath,
+            _gitBranch: entry.gitBranch,
+          });
+        } else {
+          // Orphan .jsonl — extract metadata from file content
+          try {
+            const stat = fs.statSync(fullPath);
+            const meta = peekSessionMeta(fullPath);
+            chats.push({
+              source: 'claude-code',
+              composerId: sessionId,
+              name: meta.firstPrompt ? cleanPrompt(meta.firstPrompt) : null,
+              createdAt: meta.timestamp || stat.birthtime.getTime(),
+              lastUpdatedAt: stat.mtime.getTime(),
+              mode: 'claude',
+              folder: meta.cwd || decodedFolder,
+              encrypted: false,
+              _fullPath: fullPath,
+            });
+          } catch { /* skip */ }
+        }
+
+        // Remove from indexed so we know what's left
+        indexed.delete(sessionId);
       }
-    } catch { /* no index */ }
 
-    // Scan all .jsonl files on disk (some may not be in the index)
-    let files;
-    try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
-
-    for (const file of files) {
-      const sessionId = file.replace('.jsonl', '');
-      const fullPath = path.join(dir, file);
-      const entry = indexed.get(sessionId);
-
-      if (entry) {
-        // Use index metadata
+      // Add indexed sessions whose .jsonl files no longer exist (show as unavailable)
+      for (const [sessionId, entry] of indexed) {
+        if (!entry.fullPath || !fs.existsSync(entry.fullPath)) continue;
         chats.push({
           source: 'claude-code',
           composerId: sessionId,
@@ -53,47 +110,9 @@ function getChats() {
           folder: entry.projectPath || decodedFolder,
           encrypted: false,
           bubbleCount: entry.messageCount || 0,
-          _fullPath: fullPath,
-          _gitBranch: entry.gitBranch,
+          _fullPath: entry.fullPath,
         });
-      } else {
-        // Orphan .jsonl — extract metadata from file content
-        try {
-          const stat = fs.statSync(fullPath);
-          const meta = peekSessionMeta(fullPath);
-          chats.push({
-            source: 'claude-code',
-            composerId: sessionId,
-            name: meta.firstPrompt ? cleanPrompt(meta.firstPrompt) : null,
-            createdAt: meta.timestamp || stat.birthtime.getTime(),
-            lastUpdatedAt: stat.mtime.getTime(),
-            mode: 'claude',
-            folder: meta.cwd || decodedFolder,
-            encrypted: false,
-            _fullPath: fullPath,
-          });
-        } catch { /* skip */ }
       }
-
-      // Remove from indexed so we know what's left
-      indexed.delete(sessionId);
-    }
-
-    // Add indexed sessions whose .jsonl files no longer exist (show as unavailable)
-    for (const [sessionId, entry] of indexed) {
-      if (!entry.fullPath || !fs.existsSync(entry.fullPath)) continue;
-      chats.push({
-        source: 'claude-code',
-        composerId: sessionId,
-        name: cleanPrompt(entry.firstPrompt),
-        createdAt: entry.created ? new Date(entry.created).getTime() : null,
-        lastUpdatedAt: entry.modified ? new Date(entry.modified).getTime() : null,
-        mode: 'claude',
-        folder: entry.projectPath || decodedFolder,
-        encrypted: false,
-        bubbleCount: entry.messageCount || 0,
-        _fullPath: entry.fullPath,
-      });
     }
   }
 

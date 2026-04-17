@@ -144,7 +144,7 @@ The UI is built on first run. After a version upgrade (`npm update -g agentlytic
 #### Option B — Build from source
 
 ```bash
-git clone https://github.com/f/agentlytics.git
+git clone https://github.com/atlonxp/agentlytics.git
 cd agentlytics
 npm install                       # installs CLI dependencies
 npm run build                     # builds the dashboard UI into public/
@@ -184,6 +184,18 @@ agentlytics daemon install --port 4639 --interval 60
 - Log:   `~/Library/Logs/agentlytics/daemon.log`
 - Pid:   `~/.agentlytics/daemon.pid`
 - Cache: `~/.agentlytics/cache.db`
+
+#### Optional: local domain (macOS)
+
+Serve the dashboard at `http://agentlytics.local` instead of `http://localhost:4637`:
+
+```bash
+sudo sh scripts/install-local-domain.sh             # defaults: agentlytics.local, port 4637
+sudo sh scripts/install-local-domain.sh foo.local 4637
+sudo sh scripts/uninstall-local-domain.sh           # revert
+```
+
+The install script writes `/etc/hosts`, adds a `pf` rule forwarding `:80` → daemon port, and registers a LaunchDaemon so the forward survives reboot. Safari/Chrome work out of the box; `curl` on `.local` names sometimes stalls on IPv6 mDNS — use `curl -4` for scripting.
 
 #### Troubleshooting
 

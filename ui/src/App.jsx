@@ -294,7 +294,7 @@ export default function App() {
 
       <footer className={`border-t mt-8 px-4 py-3 flex items-center justify-between text-[11px]${isFullWidth ? ' hidden' : ''}`} style={{ borderColor: 'var(--c-border)', color: 'var(--c-text3)' }}>
         <div className="flex items-center gap-3">
-          <a href="https://github.com/f/agentlytics" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-[var(--c-text)] transition">
+          <a href="https://github.com/atlonxp/agentlytics" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-[var(--c-text)] transition">
             <Github size={11} />
             <span>GitHub</span>
           </a>
@@ -304,7 +304,7 @@ export default function App() {
           </span>
         </div>
         <span>
-          built by <a href="https://github.com/f" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--c-text)] transition" style={{ color: 'var(--c-text2)' }}>fkadev</a>
+          built by <a href="https://github.com/atlonxp" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--c-text)] transition" style={{ color: 'var(--c-text2)' }}>fkadev</a>
         </span>
       </footer>
 

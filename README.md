@@ -363,4 +363,4 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for development setup, editor adapter
 
 ## License
 
-MIT — Built by [@f](https://github.com/f)
+MIT — Built by [@f](https://github.com/f), customized by [@atlonxp](https://github.com/atlonxp)

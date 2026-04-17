@@ -11,17 +11,28 @@ const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 const name = 'claude';
 
-// Return all project-root directories under ~/.claude matching `projects*`.
-// Supports user-split archives like `projects_dec16`, `projects_old`, etc.
+// Return every Claude Code projects-root directory reachable from $HOME.
+// Scans `$HOME/.claude*/projects*` so that:
+//   • ~/.claude/projects/                 (live)
+//   • ~/.claude/projects_dec16/           (in-place user split)
+//   • ~/.claude.20260131_0811/projects/   (timestamped full-dir backup)
+// are all merged into a single logical chat stream.
 function getProjectRoots() {
-  if (!fs.existsSync(CLAUDE_DIR)) return [];
+  const home = os.homedir();
   const roots = [];
-  let entries;
-  try { entries = fs.readdirSync(CLAUDE_DIR); } catch { return roots; }
-  for (const entry of entries) {
-    if (!entry.startsWith('projects')) continue;
-    const p = path.join(CLAUDE_DIR, entry);
-    try { if (fs.statSync(p).isDirectory()) roots.push(p); } catch {}
+  let siblings;
+  try { siblings = fs.readdirSync(home); } catch { return roots; }
+  for (const sib of siblings) {
+    if (!sib.startsWith('.claude')) continue;
+    const sibPath = path.join(home, sib);
+    try { if (!fs.statSync(sibPath).isDirectory()) continue; } catch { continue; }
+    let inner;
+    try { inner = fs.readdirSync(sibPath); } catch { continue; }
+    for (const sub of inner) {
+      if (!sub.startsWith('projects')) continue;
+      const p = path.join(sibPath, sub);
+      try { if (fs.statSync(p).isDirectory()) roots.push(p); } catch {}
+    }
   }
   return roots;
 }

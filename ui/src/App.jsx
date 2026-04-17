@@ -304,7 +304,7 @@ export default function App() {
           </span>
         </div>
         <span>
-          built by <a href="https://github.com/atlonxp" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--c-text)] transition" style={{ color: 'var(--c-text2)' }}>fkadev</a>
+          built by <a href="https://github.com/f" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--c-text)] transition" style={{ color: 'var(--c-text2)' }}>fkadev</a> · forked by <a href="https://github.com/atlonxp" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--c-text)] transition" style={{ color: 'var(--c-text2)' }}>atlonxp</a>
         </span>
       </footer>
 

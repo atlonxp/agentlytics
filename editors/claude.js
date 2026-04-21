@@ -37,6 +37,27 @@ function getProjectRoots() {
   return roots;
 }
 
+// Recursively collect all .jsonl files beneath `root`.
+function walkJsonl(root, out) {
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+  for (const ent of entries) {
+    const p = path.join(root, ent.name);
+    if (ent.isDirectory()) walkJsonl(p, out);
+    else if (ent.isFile() && ent.name.endsWith('.jsonl')) out.push(p);
+  }
+}
+
+// Derive sessionId from a jsonl path relative to the project dir.
+//   <projDir>/<sid>.jsonl               -> sid (old flat layout)
+//   <projDir>/<sid>/subagents/foo.jsonl -> sid (new per-session subdir layout)
+function sessionIdForPath(fullPath, projDir) {
+  const rel = path.relative(projDir, fullPath);
+  const parts = rel.split(path.sep);
+  if (parts.length === 1) return parts[0].replace(/\.jsonl$/, '');
+  return parts[0];
+}
+
 function getChats() {
   const chats = [];
 
@@ -61,17 +82,27 @@ function getChats() {
         }
       } catch { /* no index */ }
 
-      // Scan all .jsonl files on disk (some may not be in the index)
-      let files;
-      try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
+      // Recursively scan every .jsonl under the project dir — Claude Code now
+      // stores subagent transcripts under <sid>/subagents/*.jsonl, and older
+      // flat <sid>.jsonl files may have been deleted during archive merges.
+      const allJsonl = [];
+      walkJsonl(dir, allJsonl);
 
-      for (const file of files) {
-        const sessionId = file.replace('.jsonl', '');
-        const fullPath = path.join(dir, file);
+      // Group files under their owning sessionId so one logical session
+      // collapses all of: main jsonl + every subagent jsonl beneath it.
+      const filesBySid = new Map();
+      for (const fp of allJsonl) {
+        const sid = sessionIdForPath(fp, dir);
+        if (!filesBySid.has(sid)) filesBySid.set(sid, []);
+        filesBySid.get(sid).push(fp);
+      }
+
+      for (const [sessionId, paths] of filesBySid) {
+        paths.sort((a, b) => a.length - b.length); // main top-level file first
+        const topFile = paths[0];
         const entry = indexed.get(sessionId);
 
         if (entry) {
-          // Use index metadata
           chats.push({
             source: 'claude-code',
             composerId: sessionId,
@@ -82,14 +113,13 @@ function getChats() {
             folder: entry.projectPath || decodedFolder,
             encrypted: false,
             bubbleCount: entry.messageCount || 0,
-            _fullPath: fullPath,
+            _fullPath: paths,
             _gitBranch: entry.gitBranch,
           });
         } else {
-          // Orphan .jsonl — extract metadata from file content
           try {
-            const stat = fs.statSync(fullPath);
-            const meta = peekSessionMeta(fullPath);
+            const stat = fs.statSync(topFile);
+            const meta = peekSessionMeta(topFile);
             chats.push({
               source: 'claude-code',
               composerId: sessionId,
@@ -99,18 +129,17 @@ function getChats() {
               mode: 'claude',
               folder: meta.cwd || decodedFolder,
               encrypted: false,
-              _fullPath: fullPath,
+              _fullPath: paths,
             });
           } catch { /* skip */ }
         }
 
-        // Remove from indexed so we know what's left
         indexed.delete(sessionId);
       }
 
-      // Add indexed sessions whose .jsonl files no longer exist (show as unavailable)
+      // Index entries with no jsonl on disk at all — surface the metadata so
+      // the session still appears in the UI even without body/token data.
       for (const [sessionId, entry] of indexed) {
-        if (!entry.fullPath || !fs.existsSync(entry.fullPath)) continue;
         chats.push({
           source: 'claude-code',
           composerId: sessionId,
@@ -121,7 +150,8 @@ function getChats() {
           folder: entry.projectPath || decodedFolder,
           encrypted: false,
           bubbleCount: entry.messageCount || 0,
-          _fullPath: entry.fullPath,
+          _fullPath: [],
+          _gitBranch: entry.gitBranch,
         });
       }
     }
@@ -167,35 +197,41 @@ function cleanPrompt(prompt) {
 }
 
 function getMessages(chat) {
-  const filePath = chat._fullPath;
-  if (!filePath || !fs.existsSync(filePath)) return [];
+  const raw = chat._fullPath;
+  const paths = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const rows = [];
 
-  const messages = [];
-  const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+  for (const filePath of paths) {
+    if (!filePath || !fs.existsSync(filePath)) continue;
+    const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
 
-  for (const line of lines) {
-    let obj;
-    try { obj = JSON.parse(line); } catch { continue; }
+    for (const line of lines) {
+      let obj;
+      try { obj = JSON.parse(line); } catch { continue; }
+      const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : 0;
 
-    if (obj.type === 'user' && obj.message) {
-      const content = extractContent(obj.message.content);
-      if (content) messages.push({ role: 'user', content });
-    } else if (obj.type === 'assistant' && obj.message) {
-      const { text, toolCalls } = extractAssistantContent(obj.message.content);
-      const usage = obj.message.usage;
-      if (text) messages.push({
-        role: 'assistant', content: text, _model: obj.message.model,
-        _inputTokens: usage?.input_tokens, _outputTokens: usage?.output_tokens,
-        _cacheRead: usage?.cache_read_input_tokens, _cacheWrite: usage?.cache_creation_input_tokens,
-        _toolCalls: toolCalls,
-      });
-    } else if (obj.type === 'system') {
-      const text = typeof obj.message?.content === 'string' ? obj.message.content : '';
-      if (text) messages.push({ role: 'system', content: text });
+      if (obj.type === 'user' && obj.message) {
+        const content = extractContent(obj.message.content);
+        if (content) rows.push({ _ts: ts, msg: { role: 'user', content } });
+      } else if (obj.type === 'assistant' && obj.message) {
+        const { text, toolCalls } = extractAssistantContent(obj.message.content);
+        const usage = obj.message.usage;
+        if (text) rows.push({ _ts: ts, msg: {
+          role: 'assistant', content: text, _model: obj.message.model,
+          _inputTokens: usage?.input_tokens, _outputTokens: usage?.output_tokens,
+          _cacheRead: usage?.cache_read_input_tokens, _cacheWrite: usage?.cache_creation_input_tokens,
+          _toolCalls: toolCalls,
+        }});
+      } else if (obj.type === 'system') {
+        const text = typeof obj.message?.content === 'string' ? obj.message.content : '';
+        if (text) rows.push({ _ts: ts, msg: { role: 'system', content: text } });
+      }
     }
   }
 
-  return messages;
+  // Merge main + subagent streams in chronological order so token/time math is coherent.
+  rows.sort((a, b) => a._ts - b._ts);
+  return rows.map(r => r.msg);
 }
 
 function extractContent(content) {

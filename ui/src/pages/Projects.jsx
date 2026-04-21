@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
-import { Search, MessageSquare, Wrench, Cpu, FolderOpen, Calendar } from 'lucide-react'
+import { Search, MessageSquare, Wrench, Cpu, FolderOpen, Calendar, DollarSign } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { fetchProjects, fetchCosts } from '../lib/api'
 import { editorColor, editorLabel, formatNumber, formatCost, formatDate, dateRangeToApiParams } from '../lib/constants'
@@ -219,6 +219,11 @@ export default function Projects({ overview }) {
                 <div className="flex items-center gap-1">
                   <span style={{ color: 'var(--c-text3)' }}>tok</span>
                   <span className="ml-auto font-bold" style={{ color: totalTok > 0 ? 'var(--c-white)' : 'var(--c-text3)' }}>{totalTok > 0 ? formatNumber(totalTok) : '—'}</span>
+                </div>
+                <div className="flex items-center gap-1 col-span-2">
+                  <DollarSign size={9} style={{ color: 'var(--c-text3)' }} />
+                  <span style={{ color: 'var(--c-text2)' }}>cost</span>
+                  <span className="ml-auto font-bold" style={{ color: p.totalCost > 0 ? 'var(--c-accent)' : 'var(--c-text3)' }}>{p.totalCost > 0 ? formatCost(p.totalCost) : '—'}</span>
                 </div>
               </div>
 

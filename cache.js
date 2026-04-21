@@ -752,6 +752,18 @@ function getCachedProjects(opts = {}) {
       tokensEstimated = true;
     }
 
+    // Per-project cost. Reuses getCostBreakdown so the card matches the
+    // totals on /costs exactly (same model pricing + orphan/estimate logic).
+    let totalCost = 0;
+    try {
+      const cb = getCostBreakdown({
+        folder: proj.folder,
+        dateFrom: opts.dateFrom,
+        dateTo: opts.dateTo,
+      });
+      totalCost = cb.totalCost || 0;
+    } catch {}
+
     result.push({
       folder: proj.folder,
       name: proj.folder.split(/[/\\]/).pop(),
@@ -767,6 +779,7 @@ function getCachedProjects(opts = {}) {
       totalToolCalls,
       totalCacheRead,
       totalCacheWrite,
+      totalCost,
       topModels: Object.entries(modelFreq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
       topTools: Object.entries(toolFreq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
     });

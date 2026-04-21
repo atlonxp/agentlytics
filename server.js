@@ -343,13 +343,23 @@ app.get('/api/check-ai', async (req, res) => {
   try {
     const { execFile } = require('child_process');
     const isWindows = process.platform === 'win32';
-    // On Windows, use npx.cmd with shell; on Unix, use npx directly
-    const cmd = isWindows ? 'npx.cmd' : 'npx';
+    // Resolve npx next to the running node binary. The launchd daemon runs
+    // with a minimal PATH that excludes nvm, so bare "npx" hits ENOENT — but
+    // npx always ships alongside node, so process.execPath's sibling works.
+    const npxName = isWindows ? 'npx.cmd' : 'npx';
+    const nodeDir = path.dirname(process.execPath);
+    const siblingNpx = path.join(nodeDir, npxName);
+    const cmd = fs.existsSync(siblingNpx) ? siblingNpx : npxName;
+    // npx's shebang resolves "node" via PATH — prepend nodeDir so the child
+    // can find node under launchd's stripped-down PATH.
+    const pathSep = isWindows ? ';' : ':';
+    const childEnv = { ...process.env, PATH: `${nodeDir}${pathSep}${process.env.PATH || ''}` };
     const result = await new Promise((resolve, reject) => {
       execFile(cmd, ['-y', 'check-ai', '--json', folder], {
         timeout: 60000,
         maxBuffer: 1024 * 1024,
-        shell: isWindows
+        shell: isWindows,
+        env: childEnv,
       }, (err, stdout) => {
         try {
           const json = JSON.parse(stdout);

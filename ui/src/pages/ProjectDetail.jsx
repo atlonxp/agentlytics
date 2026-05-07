@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, FolderOpen, Calendar, MessageSquare, Wrench, Cpu, Zap, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Search, FolderOpen, Calendar, MessageSquare, Wrench, Cpu, Zap, AlertTriangle, ShieldCheck, ChevronRight, ChevronDown } from 'lucide-react'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import { fetchProjects, fetchChats, fetchCosts } from '../lib/api'
-import { editorColor, editorLabel, formatNumber, formatDate, formatCost } from '../lib/constants'
+import { editorColor, editorLabel, formatNumber, formatDate, formatCostFull } from '../lib/constants'
 import { useTheme } from '../lib/theme'
 import KpiCard from '../components/KpiCard'
 import EditorIcon from '../components/EditorIcon'
@@ -15,7 +15,51 @@ import AiAuditCard from '../components/AiAuditCard'
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement)
 
+function renderSessionRow(c, onSelect) {
+  return (
+    <tr
+      key={c.id}
+      className="cursor-pointer transition"
+      style={{ borderBottom: '1px solid var(--c-border)' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      onClick={() => onSelect(c.id)}
+    >
+      <td className="py-2 px-3">
+        <span className="inline-flex items-center gap-1.5">
+          <EditorIcon source={c.source} size={12} />
+          <span style={{ color: 'var(--c-text2)' }}>{editorLabel(c.source)}</span>
+        </span>
+      </td>
+      <td className="py-2 px-3 font-medium truncate max-w-[280px]" style={{ color: 'var(--c-white)' }}>
+        {c.name || <span style={{ color: 'var(--c-text3)' }}>Untitled</span>}
+        {c.encrypted && <span className="ml-1.5 text-[10px] text-yellow-500/60">locked</span>}
+      </td>
+      <td className="py-2 px-3" style={{ color: 'var(--c-text2)' }}>{c.mode || ''}</td>
+      <td className="py-2 px-3 font-mono truncate max-w-[150px]" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>{c.topModel || ''}</td>
+      <td className="py-2 px-3">
+        {c.bubbleCount >= 500 ? (
+          <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#ef4444' }}>
+            <AlertTriangle size={9} />{c.bubbleCount} msgs
+          </span>
+        ) : c.bubbleCount >= 100 ? (
+          <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#f59e0b' }}>
+            <AlertTriangle size={9} />{c.bubbleCount} msgs
+          </span>
+        ) : (
+          <span style={{ color: 'var(--c-text3)' }}>{c.bubbleCount || 0} msgs</span>
+        )}
+      </td>
+      <td className="py-2 px-3 font-mono text-right" style={{ color: c.cost > 0 ? 'var(--c-text2)' : 'var(--c-text3)' }}>
+        {c.cost > 0 ? formatCostFull(c.cost) : ''}
+      </td>
+      <td className="py-2 px-3 whitespace-nowrap" style={{ color: 'var(--c-text3)' }}>{formatDate(c.lastUpdatedAt || c.createdAt)}</td>
+    </tr>
+  )
+}
+
 const MONO = 'JetBrains Mono, monospace'
+const MINOR_COST_THRESHOLD = 1.0
 const MODEL_COLORS = ['#6366f1', '#a78bfa', '#818cf8', '#c084fc', '#e879f9', '#f472b6', '#fb7185', '#f87171', '#fbbf24', '#34d399']
 const TOOL_COLORS = ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0', '#d1fae5', '#ecfdf5', '#b8f0d8', '#7ce0b8', '#4ade80', '#22c55e']
 
@@ -35,6 +79,8 @@ export default function ProjectDetail() {
   const [selectedChatId, setSelectedChatId] = useState(null)
   const [costs, setCosts] = useState(null)
   const [enabledEditors, setEnabledEditors] = useState(null)
+  const [hideMinor, setHideMinor] = useState(false)
+  const [minorOpen, setMinorOpen] = useState(false)
 
   useEffect(() => {
     if (!folder) return
@@ -67,6 +113,17 @@ export default function ProjectDetail() {
       (c.source && c.source.toLowerCase().includes(q))
     )
   }, [editorFilteredChats, chatSearch])
+
+  const { mainChats, minorChats } = useMemo(() => {
+    if (!hideMinor) return { mainChats: filteredChats, minorChats: [] }
+    const main = []
+    const minor = []
+    for (const c of filteredChats) {
+      if ((c.cost || 0) < MINOR_COST_THRESHOLD) minor.push(c)
+      else main.push(c)
+    }
+    return { mainChats: main, minorChats: minor }
+  }, [filteredChats, hideMinor])
 
   const toggleEditor = (editorId) => {
     setEnabledEditors(prev => {
@@ -153,7 +210,7 @@ export default function ProjectDetail() {
           <KpiCard label="cache read" value={formatNumber(project.totalCacheRead)} sub={`write: ${formatNumber(project.totalCacheWrite)}`} />
         )}
         <KpiCard label="you wrote" value={formatNumber(project.totalUserChars)} sub={`AI: ${formatNumber(project.totalAssistantChars)}`} />
-        <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCost(costs.totalCost) : '\u2014'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
+        <KpiCard label="cost" value={costs && costs.totalCost > 0 ? formatCostFull(costs.totalCost) : '\u2014'} sub={costs && costs.byModel.length > 0 ? `${costs.byModel.length} model${costs.byModel.length !== 1 ? 's' : ''}` : undefined} />
       </div>
 
       {/* Charts row */}
@@ -241,9 +298,9 @@ export default function ProjectDetail() {
 
       {/* Sessions */}
       <div>
-        <div className="flex items-center gap-3 mb-2">
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
           <SectionTitle>sessions <span style={{ color: 'var(--c-text3)' }}>({filteredChats.length}{!allEnabled ? ` of ${chats.length}` : ''})</span></SectionTitle>
-          <div className="relative max-w-xs flex-1">
+          <div className="relative max-w-xs">
             <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-text3)' }} />
             <input
               type="text"
@@ -254,6 +311,16 @@ export default function ProjectDetail() {
               style={{ background: 'var(--c-bg3)', color: 'var(--c-text)', border: '1px solid var(--c-border)' }}
             />
           </div>
+          <label className="flex items-center gap-1.5 text-[11px] cursor-pointer select-none ml-auto" style={{ color: 'var(--c-text2)' }}>
+            <input
+              type="checkbox"
+              checked={hideMinor}
+              onChange={e => { setHideMinor(e.target.checked); setMinorOpen(false) }}
+              className="accent-[var(--c-accent)] w-3 h-3 cursor-pointer"
+            />
+            hide minor sessions
+            <span style={{ color: 'var(--c-text3)' }}>({'<'} {formatCostFull(MINOR_COST_THRESHOLD)})</span>
+          </label>
         </div>
 
         <div className="card overflow-hidden">
@@ -270,52 +337,52 @@ export default function ProjectDetail() {
               </tr>
             </thead>
             <tbody>
-              {filteredChats.map(c => (
-                <tr
-                  key={c.id}
-                  className="cursor-pointer transition"
-                  style={{ borderBottom: '1px solid var(--c-border)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  onClick={() => setSelectedChatId(c.id)}
-                >
-                  <td className="py-2 px-3">
-                    <span className="inline-flex items-center gap-1.5">
-                      <EditorIcon source={c.source} size={12} />
-                      <span style={{ color: 'var(--c-text2)' }}>{editorLabel(c.source)}</span>
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 font-medium truncate max-w-[280px]" style={{ color: 'var(--c-white)' }}>
-                    {c.name || <span style={{ color: 'var(--c-text3)' }}>Untitled</span>}
-                    {c.encrypted && <span className="ml-1.5 text-[10px] text-yellow-500/60">locked</span>}
-                  </td>
-                  <td className="py-2 px-3" style={{ color: 'var(--c-text2)' }}>{c.mode || ''}</td>
-                  <td className="py-2 px-3 font-mono truncate max-w-[150px]" style={{ color: 'var(--c-text2)' }} title={c.topModel || ''}>{c.topModel || ''}</td>
-                  <td className="py-2 px-3">
-                    {c.bubbleCount >= 500 ? (
-                      <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#ef4444' }}>
-                        <AlertTriangle size={9} />{c.bubbleCount} msgs
-                      </span>
-                    ) : c.bubbleCount >= 100 ? (
-                      <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#f59e0b' }}>
-                        <AlertTriangle size={9} />{c.bubbleCount} msgs
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--c-text3)' }}>{c.bubbleCount || 0} msgs</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 font-mono text-right" style={{ color: c.cost > 0 ? 'var(--c-text2)' : 'var(--c-text3)' }}>
-                    {c.cost > 0 ? formatCost(c.cost) : ''}
-                  </td>
-                  <td className="py-2 px-3 whitespace-nowrap" style={{ color: 'var(--c-text3)' }}>{formatDate(c.lastUpdatedAt || c.createdAt)}</td>
-                </tr>
-              ))}
+              {mainChats.map(c => renderSessionRow(c, setSelectedChatId))}
             </tbody>
           </table>
-          {filteredChats.length === 0 && (
-            <div className="text-center py-8 text-sm" style={{ color: 'var(--c-text3)' }}>no sessions found</div>
+          {mainChats.length === 0 && (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--c-text3)' }}>
+              {filteredChats.length === 0 ? 'no sessions found' : 'no sessions above threshold'}
+            </div>
           )}
         </div>
+
+        {hideMinor && minorChats.length > 0 && (
+          <div className="card overflow-hidden mt-2">
+            <button
+              type="button"
+              onClick={() => setMinorOpen(o => !o)}
+              className="w-full flex items-center gap-2 py-2 px-3 text-[11px] transition"
+              style={{ color: 'var(--c-text3)', background: 'transparent', borderBottom: minorOpen ? '1px solid var(--c-border)' : 'none' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              {minorOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <span className="font-medium" style={{ color: 'var(--c-text2)' }}>Minor Session ({minorChats.length}):</span>
+              <span className="font-mono">
+                {formatCostFull(minorChats.reduce((s, c) => s + (c.cost || 0), 0))} in total
+              </span>
+            </button>
+            {minorOpen && (
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
+                    <th className="text-left py-2 px-3 font-medium">editor</th>
+                    <th className="text-left py-2 px-3 font-medium">name</th>
+                    <th className="text-left py-2 px-3 font-medium">mode</th>
+                    <th className="text-left py-2 px-3 font-medium">model</th>
+                    <th className="text-left py-2 px-3 font-medium">context</th>
+                    <th className="text-right py-2 px-3 font-medium">cost</th>
+                    <th className="text-left py-2 px-3 font-medium">updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {minorChats.map(c => renderSessionRow(c, setSelectedChatId))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chat sidebar */}

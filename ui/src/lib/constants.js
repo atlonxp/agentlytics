@@ -61,6 +61,14 @@ export function formatCost(n) {
   return '$' + n.toFixed(2);
 }
 
+// Always show full precision: "$1,199.45". Use on project/detail pages where
+// users compare invoiceable amounts and cents matter.
+export function formatCostFull(n) {
+  if (n == null || n === 0) return '$0.00';
+  if (n < 0.01 && n > 0) return '<$0.01';
+  return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function formatDate(ts) {
   if (!ts) return '';
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

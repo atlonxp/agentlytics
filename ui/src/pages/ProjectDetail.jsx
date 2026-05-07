@@ -81,6 +81,7 @@ export default function ProjectDetail() {
   const [enabledEditors, setEnabledEditors] = useState(null)
   const [hideMinor, setHideMinor] = useState(true)
   const [minorOpen, setMinorOpen] = useState(false)
+  const [mainOpen, setMainOpen] = useState(true)
 
   useEffect(() => {
     if (!folder) return
@@ -324,26 +325,44 @@ export default function ProjectDetail() {
         </div>
 
         <div className="card overflow-hidden">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
-                <th className="text-left py-2 px-3 font-medium">editor</th>
-                <th className="text-left py-2 px-3 font-medium">name</th>
-                <th className="text-left py-2 px-3 font-medium">mode</th>
-                <th className="text-left py-2 px-3 font-medium">model</th>
-                <th className="text-left py-2 px-3 font-medium">context</th>
-                <th className="text-right py-2 px-3 font-medium">cost</th>
-                <th className="text-left py-2 px-3 font-medium">updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mainChats.map(c => renderSessionRow(c, setSelectedChatId))}
-            </tbody>
-          </table>
-          {mainChats.length === 0 && (
-            <div className="text-center py-8 text-sm" style={{ color: 'var(--c-text3)' }}>
-              {filteredChats.length === 0 ? 'no sessions found' : 'no sessions above threshold'}
-            </div>
+          <button
+            type="button"
+            onClick={() => setMainOpen(o => !o)}
+            className="w-full flex items-center gap-2 py-2 px-3 text-[11px] transition"
+            style={{ color: 'var(--c-text3)', background: 'transparent', borderBottom: mainOpen ? '1px solid var(--c-border)' : 'none' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg3)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            {mainOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <span className="font-medium" style={{ color: 'var(--c-text2)' }}>Main Session ({mainChats.length}):</span>
+            <span className="font-mono">
+              {formatCostFull(mainChats.reduce((s, c) => s + (c.cost || 0), 0))} in total
+            </span>
+          </button>
+          {mainOpen && (
+            <>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider" style={{ borderBottom: '1px solid var(--c-border)', color: 'var(--c-text3)' }}>
+                    <th className="text-left py-2 px-3 font-medium">editor</th>
+                    <th className="text-left py-2 px-3 font-medium">name</th>
+                    <th className="text-left py-2 px-3 font-medium">mode</th>
+                    <th className="text-left py-2 px-3 font-medium">model</th>
+                    <th className="text-left py-2 px-3 font-medium">context</th>
+                    <th className="text-right py-2 px-3 font-medium">cost</th>
+                    <th className="text-left py-2 px-3 font-medium">updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mainChats.map(c => renderSessionRow(c, setSelectedChatId))}
+                </tbody>
+              </table>
+              {mainChats.length === 0 && (
+                <div className="text-center py-8 text-sm" style={{ color: 'var(--c-text3)' }}>
+                  {filteredChats.length === 0 ? 'no sessions found' : 'no sessions above threshold'}
+                </div>
+              )}
+            </>
           )}
         </div>
 

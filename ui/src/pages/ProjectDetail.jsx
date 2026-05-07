@@ -4,7 +4,7 @@ import { ArrowLeft, Search, FolderOpen, Calendar, MessageSquare, Wrench, Cpu, Za
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import { fetchProjects, fetchChats, fetchCosts } from '../lib/api'
-import { editorColor, editorLabel, formatNumber, formatDate, formatCostFull } from '../lib/constants'
+import { editorColor, editorLabel, formatNumber, formatDate, formatCostFull, dateRangeToApiParams } from '../lib/constants'
 import { useTheme } from '../lib/theme'
 import KpiCard from '../components/KpiCard'
 import EditorIcon from '../components/EditorIcon'
@@ -12,6 +12,7 @@ import SectionTitle from '../components/SectionTitle'
 import ChatSidebar from '../components/ChatSidebar'
 import AnimatedLoader from '../components/AnimatedLoader'
 import AiAuditCard from '../components/AiAuditCard'
+import DateRangePicker from '../components/DateRangePicker'
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement)
 
@@ -82,16 +83,18 @@ export default function ProjectDetail() {
   const [hideMinor, setHideMinor] = useState(true)
   const [minorOpen, setMinorOpen] = useState(false)
   const [mainOpen, setMainOpen] = useState(true)
+  const [dateRange, setDateRange] = useState(null)
 
   useEffect(() => {
     if (!folder) return
     setLoading(true)
+    const dateParams = dateRangeToApiParams(dateRange)
     Promise.all([
-      fetchProjects(),
+      fetchProjects(dateParams),
       // named:false + high limit = same chat universe as the cost KPI.
       // This is what makes the row totals reconcile with the headline number.
-      fetchChats({ folder, limit: 10000, named: false }),
-      fetchCosts({ folder }),
+      fetchChats({ folder, limit: 10000, named: false, ...dateParams }),
+      fetchCosts({ folder, ...dateParams }),
     ]).then(([projects, chatData, costData]) => {
       const match = projects.find(p => p.folder === folder)
       setProject(match || null)
@@ -100,7 +103,7 @@ export default function ProjectDetail() {
       if (match) setEnabledEditors(new Set(Object.keys(match.editors)))
       setLoading(false)
     })
-  }, [folder])
+  }, [folder, dateRange])
 
   const editorFilteredChats = useMemo(() => {
     if (!enabledEditors) return chats
@@ -178,10 +181,13 @@ export default function ProjectDetail() {
             <h1 className="text-sm font-bold truncate" style={{ color: 'var(--c-white)' }}>{project.name}</h1>
             <div className="text-[11px] truncate" style={{ color: 'var(--c-text3)' }}>{project.folder}</div>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {editorEntries.map(([e]) => (
-              <EditorIcon key={e} source={e} size={14} />
-            ))}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5">
+              {editorEntries.map(([e]) => (
+                <EditorIcon key={e} source={e} size={14} />
+              ))}
+            </div>
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
           </div>
         </div>
         <div className="flex items-center gap-4 mt-3 pt-3 text-[11px]" style={{ borderTop: '1px solid var(--c-border)' }}>

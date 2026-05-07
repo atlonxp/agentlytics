@@ -408,17 +408,15 @@ function hiddenFolderFilter(opts, colName = 'folder') {
 }
 
 function getCachedChats(opts = {}) {
-  let sql = `SELECT c.*,
-    cs.models AS _models,
-    cs.total_input_tokens AS _inTok, cs.total_output_tokens AS _outTok,
-    cs.total_cache_read AS _cacheR, cs.total_cache_write AS _cacheW,
-    cs.total_user_chars AS _uChars, cs.total_assistant_chars AS _aChars
+  let sql = `SELECT c.*, cs.models AS _models
     FROM chats c LEFT JOIN chat_stats cs ON cs.chat_id = c.id WHERE 1=1`;
   const params = [];
   const hf = hiddenFolderFilter(opts, 'c.folder');
   if (hf.sql) { sql += hf.sql; params.push(...hf.params); }
   if (opts.editor) { sql += ' AND c.source LIKE ?'; params.push(`%${opts.editor}%`); }
-  if (opts.folder) { sql += ' AND c.folder LIKE ?'; params.push(`%${opts.folder}%`); }
+  // Use exact match (= not LIKE) to align with the cost scope filter; LIKE
+  // would silently treat _ and % as wildcards and break the row/KPI invariant.
+  if (opts.folder) { sql += ' AND c.folder = ?'; params.push(opts.folder); }
   if (opts.named !== false) { sql += ' AND (c.name IS NOT NULL OR c.bubble_count > 0)'; }
   if (opts.dateFrom) { sql += ' AND COALESCE(c.last_updated_at, c.created_at) >= ?'; params.push(opts.dateFrom); }
   if (opts.dateTo) { sql += ' AND COALESCE(c.last_updated_at, c.created_at) <= ?'; params.push(opts.dateTo); }
@@ -426,6 +424,13 @@ function getCachedChats(opts = {}) {
   if (opts.limit) { sql += ' LIMIT ?'; params.push(opts.limit); }
   if (opts.offset) { sql += ' OFFSET ?'; params.push(opts.offset); }
   const rows = db.prepare(sql).all(params);
+
+  // Build per-chat cost map using the SAME scope filter that estimateCosts
+  // uses for the project KPI. When the caller passes named:false and no
+  // limit, the rows here cover the same chat universe → Σ row.cost === KPI.
+  const { whereClause, params: scopeParams } = buildCostScopeWhere(opts);
+  const costMap = computePerChatCosts(whereClause, scopeParams);
+
   for (const r of rows) {
     r.top_model = null;
     try {
@@ -436,14 +441,8 @@ function getCachedChats(opts = {}) {
         r.top_model = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
       }
     } catch { }
-    // Per-session cost estimate
-    let inTok = r._inTok || 0, outTok = r._outTok || 0;
-    if (inTok === 0 && outTok === 0 && ((r._uChars || 0) > 0 || (r._aChars || 0) > 0)) {
-      inTok = Math.round((r._uChars || 0) / 4);
-      outTok = Math.round((r._aChars || 0) / 4);
-    }
-    r.cost = r.top_model ? (calculateCost(r.top_model, inTok, outTok, r._cacheR || 0, r._cacheW || 0) || 0) : 0;
-    delete r._models; delete r._inTok; delete r._outTok; delete r._cacheR; delete r._cacheW; delete r._uChars; delete r._aChars;
+    r.cost = costMap.get(r.id) || 0;
+    delete r._models;
   }
   return rows;
 }
@@ -1090,6 +1089,109 @@ function getCachedDashboardStats(opts = {}) {
 // Cost estimation
 // ============================================================
 
+// Per-chat cost map. Mirrors estimateCosts attribution paths (direct messages,
+// orphan messages, char-based estimation, empty-models sessions), but emits
+// chat_id -> cost so per-row totals reconcile with the aggregate KPI by
+// construction. Use the same whereClause that estimateCosts/getCostBreakdown
+// uses to guarantee Σ map.values() === estimateCosts(...).totalCost.
+function computePerChatCosts(whereClause = '', params = []) {
+  const map = new Map();
+  const add = (chatId, model, input, output, cacheRead, cacheWrite) => {
+    if (!chatId || !model) return;
+    const cost = calculateCost(model, input || 0, output || 0, cacheRead || 0, cacheWrite || 0);
+    if (cost === null) return;
+    map.set(chatId, (map.get(chatId) || 0) + cost);
+  };
+
+  // 1. Direct: messages with explicit model — price each (chat, model) bucket
+  const directRows = db.prepare(`
+    SELECT m.chat_id, m.model,
+           SUM(m.input_tokens) as input, SUM(m.output_tokens) as output,
+           SUM(m.cache_read) as cacheRead, SUM(m.cache_write) as cacheWrite
+    FROM messages m JOIN chats c ON m.chat_id = c.id
+    WHERE m.model IS NOT NULL AND (m.input_tokens > 0 OR m.output_tokens > 0 OR m.cache_read > 0 OR m.cache_write > 0)${whereClause}
+    GROUP BY m.chat_id, m.model
+  `).all(...params);
+  for (const r of directRows) add(r.chat_id, r.model, r.input, r.output, r.cacheRead, r.cacheWrite);
+
+  // Helper: dominant model from a chat_stats.models JSON array
+  const dominantOf = (modelsJson) => {
+    let models;
+    try { models = JSON.parse(modelsJson || '[]'); } catch { return null; }
+    if (models.length === 0) return null;
+    const freq = {};
+    for (const m of models) freq[m] = (freq[m] || 0) + 1;
+    return Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+  };
+
+  // 2. Orphan messages: NULL model — attribute to chat's dominant model
+  const orphanRows = db.prepare(`
+    SELECT m.chat_id,
+           SUM(m.input_tokens) as input, SUM(m.output_tokens) as output,
+           SUM(m.cache_read) as cacheRead, SUM(m.cache_write) as cacheWrite
+    FROM messages m JOIN chats c ON m.chat_id = c.id
+    WHERE m.model IS NULL AND (m.input_tokens > 0 OR m.output_tokens > 0 OR m.cache_read > 0 OR m.cache_write > 0)${whereClause}
+    GROUP BY m.chat_id
+  `).all(...params);
+  for (const r of orphanRows) {
+    const stat = db.prepare('SELECT models FROM chat_stats WHERE chat_id = ?').get(r.chat_id);
+    const dominant = stat ? dominantOf(stat.models) : null;
+    if (dominant) add(r.chat_id, dominant, r.input, r.output, r.cacheRead, r.cacheWrite);
+  }
+
+  // 3. Char-based estimation: chats with models + chars but no token counters
+  const CHARS_PER_TOKEN = 4;
+  const charRows = db.prepare(`
+    SELECT cs.chat_id, cs.models, cs.total_user_chars as userChars, cs.total_assistant_chars as asstChars
+    FROM chat_stats cs JOIN chats c ON cs.chat_id = c.id
+    WHERE cs.models != '[]' AND cs.total_input_tokens = 0 AND cs.total_output_tokens = 0
+      AND (cs.total_user_chars > 0 OR cs.total_assistant_chars > 0)${whereClause}
+  `).all(...params);
+  for (const r of charRows) {
+    const dominant = dominantOf(r.models);
+    if (!dominant) continue;
+    const inTok = Math.round((r.userChars || 0) / CHARS_PER_TOKEN);
+    const outTok = Math.round((r.asstChars || 0) / CHARS_PER_TOKEN);
+    add(r.chat_id, dominant, inTok, outTok, 0, 0);
+  }
+
+  // 4. Empty-models sessions with token totals (e.g. Cursor composer chats)
+  const unmodeledRows = db.prepare(`
+    SELECT c.id as chat_id, c.source,
+           cs.total_input_tokens as input, cs.total_output_tokens as output,
+           cs.total_cache_read as cacheRead, cs.total_cache_write as cacheWrite
+    FROM chat_stats cs JOIN chats c ON cs.chat_id = c.id
+    WHERE cs.models = '[]' AND (cs.total_input_tokens > 0 OR cs.total_output_tokens > 0)${whereClause}
+  `).all(...params);
+  if (unmodeledRows.length > 0) {
+    const sourceModelFreq = {};
+    const allSessions = db.prepare(`
+      SELECT c.source, cs.models FROM chat_stats cs JOIN chats c ON cs.chat_id = c.id
+      WHERE cs.models != '[]'${whereClause}
+    `).all(...params);
+    for (const s of allSessions) {
+      let models;
+      try { models = JSON.parse(s.models || '[]'); } catch { continue; }
+      if (!sourceModelFreq[s.source]) sourceModelFreq[s.source] = {};
+      for (const m of models) sourceModelFreq[s.source][m] = (sourceModelFreq[s.source][m] || 0) + 1;
+    }
+    const globalFreq = {};
+    for (const sf of Object.values(sourceModelFreq)) {
+      for (const [m, c] of Object.entries(sf)) globalFreq[m] = (globalFreq[m] || 0) + c;
+    }
+    const globalDominant = Object.entries(globalFreq).sort((a, b) => b[1] - a[1])[0]?.[0];
+    for (const r of unmodeledRows) {
+      const sf = sourceModelFreq[r.source];
+      const dominant = sf
+        ? Object.entries(sf).sort((a, b) => b[1] - a[1])[0]?.[0]
+        : globalDominant;
+      if (dominant) add(r.chat_id, dominant, r.input, r.output, r.cacheRead, r.cacheWrite);
+    }
+  }
+
+  return map;
+}
+
 function estimateCosts(whereClause = '', params = []) {
   // Per-model token usage from messages table (including cache tokens)
   const modelTokens = db.prepare(`
@@ -1227,7 +1329,10 @@ function estimateCosts(whereClause = '', params = []) {
   return { totalCost, byModel, unknownModels };
 }
 
-function getCostBreakdown(opts = {}) {
+// Canonical cost-scope filter. ANY function that wants its outputs to
+// reconcile with estimateCosts must build its WHERE clause through this
+// helper — keeping the chat universe identical.
+function buildCostScopeWhere(opts = {}) {
   let whereClause = '';
   const params = [];
   const hf = hiddenFolderFilter(opts, 'c.folder');
@@ -1237,6 +1342,11 @@ function getCostBreakdown(opts = {}) {
   if (opts.dateFrom) { whereClause += ' AND COALESCE(c.last_updated_at, c.created_at) >= ?'; params.push(opts.dateFrom); }
   if (opts.dateTo) { whereClause += ' AND COALESCE(c.last_updated_at, c.created_at) <= ?'; params.push(opts.dateTo); }
   if (opts.chatId) { whereClause += ' AND c.id = ?'; params.push(opts.chatId); }
+  return { whereClause, params };
+}
+
+function getCostBreakdown(opts = {}) {
+  const { whereClause, params } = buildCostScopeWhere(opts);
   return estimateCosts(whereClause, params);
 }
 

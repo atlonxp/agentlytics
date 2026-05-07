@@ -88,7 +88,9 @@ export default function ProjectDetail() {
     setLoading(true)
     Promise.all([
       fetchProjects(),
-      fetchChats({ folder, limit: 1000 }),
+      // named:false + high limit = same chat universe as the cost KPI.
+      // This is what makes the row totals reconcile with the headline number.
+      fetchChats({ folder, limit: 10000, named: false }),
       fetchCosts({ folder }),
     ]).then(([projects, chatData, costData]) => {
       const match = projects.find(p => p.folder === folder)

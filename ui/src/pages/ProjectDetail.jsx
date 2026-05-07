@@ -79,7 +79,7 @@ export default function ProjectDetail() {
   const [selectedChatId, setSelectedChatId] = useState(null)
   const [costs, setCosts] = useState(null)
   const [enabledEditors, setEnabledEditors] = useState(null)
-  const [hideMinor, setHideMinor] = useState(false)
+  const [hideMinor, setHideMinor] = useState(true)
   const [minorOpen, setMinorOpen] = useState(false)
 
   useEffect(() => {
@@ -318,7 +318,7 @@ export default function ProjectDetail() {
               onChange={e => { setHideMinor(e.target.checked); setMinorOpen(false) }}
               className="accent-[var(--c-accent)] w-3 h-3 cursor-pointer"
             />
-            hide minor sessions
+            Hide Minor Sessions
             <span style={{ color: 'var(--c-text3)' }}>({'<'} {formatCostFull(MINOR_COST_THRESHOLD)})</span>
           </label>
         </div>

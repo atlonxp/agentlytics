@@ -80,9 +80,12 @@ export function formatDate(ts) {
  */
 export function dateRangeToApiParams(range) {
   if (!range?.from || !range?.to) return {};
+  // Anchor both ends in LOCAL time. `new Date('YYYY-MM-DD')` parses as UTC
+  // midnight, while `new Date('YYYY-MM-DDTHH:MM:SS')` (no Z) parses as local
+  // — so the original code mixed the two and clipped data near day rollovers.
   return {
-    dateFrom: new Date(range.from).getTime(),
-    dateTo: new Date(range.to + 'T23:59:59').getTime(),
+    dateFrom: new Date(range.from + 'T00:00:00').getTime(),
+    dateTo: new Date(range.to + 'T23:59:59.999').getTime(),
   };
 }
 

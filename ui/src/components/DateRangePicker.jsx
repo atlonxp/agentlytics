@@ -8,20 +8,22 @@ const PRESETS = [
   { label: '1y',  days: 365 },
 ]
 
+// Local-date formatter (YYYY-MM-DD in user's timezone). Avoids the UTC drift
+// that toISOString() introduces — e.g. when it's 04:00 in Bangkok the UTC
+// date is still "yesterday", so "1y to today" silently lost today's data.
+const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 // value: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } | null
 // onChange: called with same shape, or null to clear
 export default function DateRangePicker({ value, onChange }) {
   const { dark } = useTheme()
-  const today = new Date().toISOString().split('T')[0]
+  const today = fmtLocal(new Date())
   const active = !!value
 
   function applyPreset(days) {
     const to = new Date()
     const from = new Date(to.getTime() - days * 86400000)
-    onChange({
-      from: from.toISOString().split('T')[0],
-      to: to.toISOString().split('T')[0],
-    })
+    onChange({ from: fmtLocal(from), to: fmtLocal(to) })
   }
 
   function setFrom(from) {

@@ -68,13 +68,15 @@ function initDb() {
       const row = tmp.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get();
       tmp.close();
       if (!row || parseInt(row.value) !== SCHEMA_VERSION) {
+        backupCache('pre-migration'); // recoverable snapshot before a schema wipe
         for (const suffix of ['', '-wal', '-shm']) {
           const f = CACHE_DB + suffix;
           if (fs.existsSync(f)) fs.unlinkSync(f);
         }
       }
     } catch {
-      // Corrupt or unreadable DB — wipe it
+      // Corrupt or unreadable DB — back up for forensics, then wipe it
+      try { backupCache('pre-corrupt'); } catch { /* best effort */ }
       for (const suffix of ['', '-wal', '-shm']) {
         const f = CACHE_DB + suffix;
         if (fs.existsSync(f)) fs.unlinkSync(f);
@@ -821,6 +823,9 @@ function safeParseJson(s) {
  * Required for SSE streaming so progress events actually flush to the client.
  */
 async function scanAllAsync(onProgress, opts = {}) {
+  const force = opts.force || false;
+  // Force re-read of editor source data so a forced rescan re-parses everything.
+  if (force || opts.resetCaches) resetCaches();
   const chats = opts.chats || getAllChats();
   const total = chats.length;
   let scanned = 0;
@@ -857,8 +862,9 @@ async function scanAllAsync(onProgress, opts = {}) {
     const chatBc = chat.bubbleCount || 0;
 
     // Skip if already cached, not updated, and bubble count hasn't grown
+    // (unless this is a forced rescan, which re-analyzes every present source).
     const cached = existing[chat.composerId];
-    if (cached && cached.ts && cached.ts >= chatTs && cached.bc >= chatBc) {
+    if (!force && cached && cached.ts && cached.ts >= chatTs && cached.bc >= chatBc) {
       const hasStat = db.prepare('SELECT 1 FROM chat_stats WHERE chat_id = ?').get(chat.composerId);
       if (hasStat) {
         skipped++;
@@ -892,14 +898,58 @@ async function scanAllAsync(onProgress, opts = {}) {
   return { total, analyzed, skipped };
 }
 
+// Write a consistent, timestamped snapshot of the cache DB into backups/ and
+// prune to the most recent MAX_AUTO_BACKUPS. Checkpointing folds the WAL into
+// the main file so a plain copy is a complete snapshot. Returns the dest path.
+const MAX_AUTO_BACKUPS = 5;
+function backupCache(tag = 'auto') {
+  if (!fs.existsSync(CACHE_DB)) return null;
+  const backupsDir = path.join(CACHE_DIR, 'backups');
+  if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');
+  const dest = path.join(backupsDir, `cache.db.${tag}.${stamp}`);
+  if (db) {
+    // DB is open: fold the WAL into the main file so a single-file copy is whole.
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* best effort */ }
+    fs.copyFileSync(CACHE_DB, dest);
+  } else {
+    // DB is closed (e.g. pre-migration): copy the main file and its WAL sidecars.
+    fs.copyFileSync(CACHE_DB, dest);
+    for (const suffix of ['-wal', '-shm']) {
+      if (fs.existsSync(CACHE_DB + suffix)) fs.copyFileSync(CACHE_DB + suffix, dest + suffix);
+    }
+  }
+  // Prune old auto-backups (never touch the manual/pre-fix ones).
+  try {
+    const mine = fs.readdirSync(backupsDir)
+      .filter((f) => f.startsWith(`cache.db.${tag}.`))
+      .sort();
+    for (const f of mine.slice(0, Math.max(0, mine.length - MAX_AUTO_BACKUPS))) {
+      fs.unlinkSync(path.join(backupsDir, f));
+    }
+  } catch { /* pruning is best effort */ }
+  return dest;
+}
+
+// Non-destructive refetch: re-parse every present source (force) while keeping
+// chats whose source has since been pruned/deleted. This is the /api/refetch
+// and Live-mode path — it can never silently drop history.
+async function forceRescanAsync(onProgress, opts = {}) {
+  return scanAllAsync(onProgress, { ...opts, force: true });
+}
+
+// Destructive hard reset: wipe and rebuild from scratch. Only reachable via the
+// explicit, confirmation-gated Hard reset action. Always backs up first so the
+// pre-wipe state is recoverable.
 async function resetAndRescanAsync(onProgress) {
+  backupCache('pre-reset');
   if (db) db.close();
   if (fs.existsSync(CACHE_DB)) fs.unlinkSync(CACHE_DB);
   for (const suffix of ['-wal', '-shm']) {
     if (fs.existsSync(CACHE_DB + suffix)) fs.unlinkSync(CACHE_DB + suffix);
   }
   initDb();
-  return scanAllAsync(onProgress);
+  return scanAllAsync(onProgress, { force: true });
 }
 
 function getCachedDashboardStats(opts = {}) {
@@ -1624,6 +1674,8 @@ module.exports = {
   getCachedProjects,
   getCachedToolCalls,
   resetAndRescanAsync,
+  forceRescanAsync,
+  backupCache,
   getCachedDashboardStats,
   getCostBreakdown,
   getCostAnalytics,

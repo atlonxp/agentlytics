@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { Activity, BarChart3, GitCompare, MessageSquare, FolderOpen, DollarSign, CreditCard, Sun, Moon, RefreshCw, AlertTriangle, Github, Terminal, Database, Users, Plug, Copy, Check, Settings as SettingsIcon, Package, ChevronDown, Target } from 'lucide-react'
-import { fetchOverview, refetchAgents, fetchMode, fetchRelayConfig, getAuthToken, setOnAuthFailure } from './lib/api'
+import { fetchOverview, refetchAgents, hardResetAgents, fetchMode, fetchRelayConfig, getAuthToken, setOnAuthFailure } from './lib/api'
 import { useTheme } from './lib/theme'
 import { useLive } from './hooks/useLive'
 import AnimatedLogo from './components/AnimatedLogo'
@@ -134,6 +134,23 @@ export default function App() {
     setRefetchState(null)
   }
 
+  const handleHardReset = async () => {
+    const ok = window.confirm(
+      'Hard reset wipes the local analytics cache and rebuilds it from scratch.\n\n' +
+      'Sessions whose source files your editors have already deleted will be lost ' +
+      '(a backup of the current cache is saved to ~/.agentlytics/backups first).\n\n' +
+      'Use this only to recover from a corrupted cache. Continue?'
+    )
+    if (!ok) return
+    setRefetchState({ scanned: 0, total: 0 })
+    try {
+      await hardResetAgents((p) => setRefetchState({ scanned: p.scanned, total: p.total }))
+      const data = await fetchOverview()
+      setOverview(data)
+    } catch (e) { console.error(e) }
+    setRefetchState(null)
+  }
+
   const isRelay = mode === 'relay'
   const showLogin = isRelay && needsAuth && !authed
 
@@ -214,12 +231,21 @@ export default function App() {
                 disabled={!!refetchState}
                 className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded transition hover:bg-[var(--c-card)]"
                 style={{ color: 'var(--c-text2)', border: '1px solid var(--c-border)' }}
-                title="Clear cache and rescan all editors"
+                title="Re-scan all editors (keeps previously-collected history)"
               >
                 <RefreshCw size={10} className={refetchState ? 'animate-spin' : ''} />
                 {refetchState
                   ? `Refetching (${refetchState.scanned}/${refetchState.total})...`
                   : 'Refetch'}
+              </button>
+              <button
+                onClick={handleHardReset}
+                disabled={!!refetchState}
+                className="flex items-center px-1.5 py-0.5 text-[11px] rounded transition hover:bg-[var(--c-card)]"
+                style={{ color: 'var(--c-text3)', border: '1px solid var(--c-border)' }}
+                title="Hard reset: wipe & rebuild cache from scratch (backs up first). Only for a corrupted cache."
+              >
+                <AlertTriangle size={10} />
               </button>
               <span className="text-[11px]" style={{ color: 'var(--c-text2)' }}>
                 {overview ? `${overview.totalChats} sessions` : '...'}

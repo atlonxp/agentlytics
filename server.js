@@ -301,7 +301,28 @@ app.get('/api/usage', async (req, res) => {
   }
 });
 
+// Non-destructive refetch: re-parses every present source but keeps history
+// whose source has been pruned. Safe to run repeatedly (incl. Live mode).
 app.get('/api/refetch', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  try {
+    const result = await cache.forceRescanAsync((progress) => {
+      res.write(`data: ${JSON.stringify(progress)}\n\n`);
+    });
+    res.write(`data: ${JSON.stringify({ done: true, total: result.total, analyzed: result.analyzed })}\n\n`);
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+  }
+  res.end();
+});
+
+// Destructive hard reset: wipes and rebuilds from scratch. Backs up cache.db
+// first (see cache.resetAndRescanAsync). Gated behind a UI confirmation.
+app.get('/api/hard-reset', async (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

@@ -103,9 +103,9 @@ export async function fetchDeepAnalytics(params = {}) {
   return res.json();
 }
 
-export function refetchAgents(onProgress) {
+function scanStream(path, onProgress) {
   return new Promise((resolve, reject) => {
-    const es = new EventSource(`${BASE}/api/refetch`);
+    const es = new EventSource(`${BASE}${path}`);
     es.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
@@ -116,6 +116,16 @@ export function refetchAgents(onProgress) {
     };
     es.onerror = () => { es.close(); reject(new Error('SSE error')); };
   });
+}
+
+// Non-destructive re-scan: re-parses all present sources, keeps pruned history.
+export function refetchAgents(onProgress) {
+  return scanStream('/api/refetch', onProgress);
+}
+
+// Destructive wipe + rebuild. Backs up cache.db first. Confirm before calling.
+export function hardResetAgents(onProgress) {
+  return scanStream('/api/hard-reset', onProgress);
 }
 
 export async function fetchDashboardStats(params = {}) {

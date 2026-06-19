@@ -36,15 +36,26 @@ function decodeProjectDir(dirName) {
  *   - <project>/agent-transcripts/<id>.jsonl (flat)
  *   - <project>/agent-transcripts/<id>/<id>.jsonl (nested)
  */
+// ~/.cursor/projects across $HOME and every configured source.
+function cursorProjectsDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([CURSOR_PROJECTS_DIR]);
+  for (const base of getScanBases()) {
+    if (path.basename(base) === '.cursor') dirs.add(path.join(base, 'projects'));
+    else dirs.add(path.join(base, '.cursor', 'projects'));
+  }
+  return [...dirs];
+}
+
 function findTranscripts() {
   const results = [];
-  if (!fs.existsSync(CURSOR_PROJECTS_DIR)) return results;
 
-  let projectDirs;
-  try { projectDirs = fs.readdirSync(CURSOR_PROJECTS_DIR); } catch { return results; }
+  for (const projectsDir of cursorProjectsDirsForAllBases()) {
+    let projectDirs;
+    try { projectDirs = fs.readdirSync(projectsDir); } catch { continue; }
 
-  for (const projDir of projectDirs) {
-    const transcriptsDir = path.join(CURSOR_PROJECTS_DIR, projDir, 'agent-transcripts');
+    for (const projDir of projectDirs) {
+      const transcriptsDir = path.join(projectsDir, projDir, 'agent-transcripts');
     if (!fs.existsSync(transcriptsDir)) continue;
 
     let entries;
@@ -71,6 +82,7 @@ function findTranscripts() {
           }
         }
       } catch { /* skip */ }
+    }
     }
   }
   return results;
@@ -112,9 +124,12 @@ function extractFirstUserText(entries) {
 
 function getChats() {
   const chats = [];
+  const seen = new Set();
   const transcripts = findTranscripts();
 
   for (const { sessionId, jsonlPath, folder } of transcripts) {
+    if (seen.has(sessionId)) continue;
+    seen.add(sessionId);
     try {
       const stat = fs.statSync(jsonlPath);
       const entries = parseJsonl(jsonlPath);

@@ -17,10 +17,10 @@ const name = 'gemini-cli';
  * Format: { "projects": { "/Users/dev/Code/myapp": "myapp" } }
  * Returns Map<projectName, folderPath>
  */
-function loadProjectMap() {
+function loadProjectMap(jsonPath = PROJECTS_JSON) {
   const map = new Map();
   try {
-    const data = JSON.parse(fs.readFileSync(PROJECTS_JSON, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
     if (data.projects) {
       for (const [folderPath, projName] of Object.entries(data.projects)) {
         map.set(projName, folderPath);
@@ -30,19 +30,34 @@ function loadProjectMap() {
   return map;
 }
 
+// ~/.gemini across $HOME and every configured source (home-base <base>/.gemini,
+// or a base that is itself a .gemini dir).
+function geminiHomes() {
+  const { getScanBases } = require('./base');
+  const homes = new Set([GEMINI_DIR]);
+  for (const base of getScanBases()) {
+    homes.add(path.basename(base) === '.gemini' ? base : path.join(base, '.gemini'));
+  }
+  return [...homes];
+}
+
 function getChats() {
   const chats = [];
-  if (!fs.existsSync(TMP_DIR)) return chats;
+  const seen = new Set();
 
-  const projectMap = loadProjectMap();
+  for (const geminiDir of geminiHomes()) {
+    const tmpDir = path.join(geminiDir, 'tmp');
+    if (!fs.existsSync(tmpDir)) continue;
 
-  // Each subdirectory under tmp/ is a project name (e.g. "codename-share")
-  let projectDirs;
-  try { projectDirs = fs.readdirSync(TMP_DIR); } catch { return chats; }
+    const projectMap = loadProjectMap(path.join(geminiDir, 'projects.json'));
 
-  for (const projName of projectDirs) {
-    const projDir = path.join(TMP_DIR, projName);
-    try { if (!fs.statSync(projDir).isDirectory()) continue; } catch { continue; }
+    // Each subdirectory under tmp/ is a project name (e.g. "codename-share")
+    let projectDirs;
+    try { projectDirs = fs.readdirSync(tmpDir); } catch { continue; }
+
+    for (const projName of projectDirs) {
+      const projDir = path.join(tmpDir, projName);
+      try { if (!fs.statSync(projDir).isDirectory()) continue; } catch { continue; }
 
     // Sessions are in <projDir>/chats/session-*.json
     const chatsDir = path.join(projDir, 'chats');
@@ -64,6 +79,8 @@ function getChats() {
         if (!record || !record.messages) continue;
 
         const sessionId = record.sessionId || file.replace('.json', '');
+        if (seen.has(sessionId)) continue;
+        seen.add(sessionId);
         const messages = record.messages || [];
 
         // Extract first user prompt for title
@@ -83,6 +100,7 @@ function getChats() {
           _fullPath: fullPath,
         });
       } catch { /* skip malformed files */ }
+    }
     }
   }
 

@@ -9,7 +9,7 @@ const ARCHIVED_SESSION_SUBDIR = 'archived_sessions';
 const MAX_TOOL_RESULT_PREVIEW = 500;
 
 function getChats() {
-  const dirs = [getSessionsDir(), getArchivedSessionsDir()];
+  const dirs = sessionDirsForAllBases();
   const seen = new Set();
   const chats = [];
 
@@ -45,6 +45,23 @@ function getSessionsDir() {
 
 function getArchivedSessionsDir() {
   return path.join(getCodexHome(), ARCHIVED_SESSION_SUBDIR);
+}
+
+// Codex session + archived-session dirs across $HOME and every configured source.
+// Real home honors $CODEX_HOME; for each extra base, scan <base>/.codex (home-base)
+// or the base itself if it is already a .codex dir (direct). Chats dedupe by
+// composerId downstream, so overlapping bases are harmless.
+function sessionDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const homes = new Set([getCodexHome()]);
+  for (const base of getScanBases()) {
+    homes.add(path.basename(base) === '.codex' ? base : path.join(base, '.codex'));
+  }
+  const dirs = [];
+  for (const home of homes) {
+    dirs.push(path.join(home, SESSION_SUBDIR), path.join(home, ARCHIVED_SESSION_SUBDIR));
+  }
+  return dirs;
 }
 
 function walkJsonlFiles(dir) {

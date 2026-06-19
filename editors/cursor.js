@@ -10,21 +10,50 @@ const CURSOR_USER_DIR = path.join(getAppDataPath('Cursor'), 'User');
 const WORKSPACE_STORAGE_DIR = path.join(CURSOR_USER_DIR, 'workspaceStorage');
 const GLOBAL_STORAGE_DB = path.join(CURSOR_USER_DIR, 'globalStorage', 'state.vscdb');
 
+// ~/.cursor/chats across $HOME and every configured source.
+function agentStoreDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([CURSOR_CHATS_DIR]);
+  for (const base of getScanBases()) dirs.add(path.join(base, '.cursor', 'chats'));
+  return [...dirs];
+}
+
+// Cursor app-support roots ({ wsStorageDir, globalDb }) across $HOME and every
+// configured source. Each workspace chat is stamped with its base's globalDb so
+// getMessages reads bubbles from the right state.vscdb.
+function cursorAppRootsForAllBases() {
+  const { getScanBases } = require('./base');
+  const roots = [{ wsStorageDir: WORKSPACE_STORAGE_DIR, globalDb: GLOBAL_STORAGE_DB }];
+  const seen = new Set([WORKSPACE_STORAGE_DIR]);
+  for (const base of getScanBases()) {
+    const userDir = path.join(getAppDataPath('Cursor', base), 'User');
+    const wsDir = path.join(userDir, 'workspaceStorage');
+    if (seen.has(wsDir)) continue;
+    seen.add(wsDir);
+    roots.push({ wsStorageDir: wsDir, globalDb: path.join(userDir, 'globalStorage', 'state.vscdb') });
+  }
+  return roots;
+}
+
 // ============================================================
 // Source 1: ~/.cursor/chats/<hash>/<chatId>/store.db (agent KV)
 // ============================================================
 
 function getAgentStoreChats() {
   const results = [];
-  if (!fs.existsSync(CURSOR_CHATS_DIR)) return results;
-
-  for (const workspace of fs.readdirSync(CURSOR_CHATS_DIR)) {
-    const wsDir = path.join(CURSOR_CHATS_DIR, workspace);
-    if (!fs.statSync(wsDir).isDirectory()) continue;
-    for (const chat of fs.readdirSync(wsDir)) {
-      const dbPath = path.join(wsDir, chat, 'store.db');
-      if (fs.existsSync(dbPath)) {
-        results.push({ workspace, chatId: chat, dbPath });
+  for (const chatsDir of agentStoreDirsForAllBases()) {
+    let workspaces;
+    try { workspaces = fs.readdirSync(chatsDir); } catch { continue; }
+    for (const workspace of workspaces) {
+      const wsDir = path.join(chatsDir, workspace);
+      try { if (!fs.statSync(wsDir).isDirectory()) continue; } catch { continue; }
+      let entries;
+      try { entries = fs.readdirSync(wsDir); } catch { continue; }
+      for (const chat of entries) {
+        const dbPath = path.join(wsDir, chat, 'store.db');
+        if (fs.existsSync(dbPath)) {
+          results.push({ workspace, chatId: chat, dbPath });
+        }
       }
     }
   }
@@ -119,11 +148,11 @@ function collectStoreMessages(db, rootBlobId) {
 // Source 2: workspaceStorage + globalStorage (composer bubbles)
 // ============================================================
 
-function getWorkspaceMap() {
+function getWorkspaceMap(wsStorageDir = WORKSPACE_STORAGE_DIR) {
   const map = [];
-  if (!fs.existsSync(WORKSPACE_STORAGE_DIR)) return map;
-  for (const hash of fs.readdirSync(WORKSPACE_STORAGE_DIR)) {
-    const dir = path.join(WORKSPACE_STORAGE_DIR, hash);
+  if (!fs.existsSync(wsStorageDir)) return map;
+  for (const hash of fs.readdirSync(wsStorageDir)) {
+    const dir = path.join(wsStorageDir, hash);
     const wsJson = path.join(dir, 'workspace.json');
     const stateDb = path.join(dir, 'state.vscdb');
     if (!fs.existsSync(wsJson) || !fs.existsSync(stateDb)) continue;
@@ -252,14 +281,17 @@ const name = 'cursor';
 
 function getChats() {
   const chats = [];
+  const seen = new Set();
 
-  // Source 1: ~/.cursor/chats store.db
+  // Source 1: ~/.cursor/chats store.db (across all bases)
   for (const { workspace, chatId, dbPath } of getAgentStoreChats()) {
+    if (seen.has(chatId)) continue;
     try {
       const db = new Database(dbPath, { readonly: true });
       const meta = readStoreMeta(db);
       db.close();
       if (meta) {
+        seen.add(chatId);
         chats.push({
           source: 'cursor',
           composerId: chatId,
@@ -276,40 +308,46 @@ function getChats() {
     } catch { /* skip */ }
   }
 
-  // Source 2: workspaceStorage composers
-  let globalDb = null;
-  try { globalDb = new Database(GLOBAL_STORAGE_DB, { readonly: true }); } catch { /* no global db */ }
+  // Source 2: workspaceStorage composers (across all bases)
+  for (const { wsStorageDir, globalDb: globalDbPath } of cursorAppRootsForAllBases()) {
+    let globalDb = null;
+    try { globalDb = new Database(globalDbPath, { readonly: true }); } catch { /* no global db */ }
 
-  const modelPref = globalDb ? getModelPreference(globalDb) : null;
+    const modelPref = globalDb ? getModelPreference(globalDb) : null;
 
-  for (const { hash, folder, stateDb } of getWorkspaceMap()) {
-    const headers = getComposerHeaders(stateDb);
-    for (const h of headers) {
-      let bubbleCount = 0;
-      if (globalDb) {
-        try {
-          const countRow = globalDb.prepare(
-            "SELECT count(*) as cnt FROM cursorDiskKV WHERE key LIKE ?"
-          ).get(`bubbleId:${h.composerId}:%`);
-          bubbleCount = countRow ? countRow.cnt : 0;
-        } catch { /* skip */ }
+    for (const { hash, folder, stateDb } of getWorkspaceMap(wsStorageDir)) {
+      const headers = getComposerHeaders(stateDb);
+      for (const h of headers) {
+        if (seen.has(h.composerId)) continue;
+        seen.add(h.composerId);
+        let bubbleCount = 0;
+        if (globalDb) {
+          try {
+            const countRow = globalDb.prepare(
+              "SELECT count(*) as cnt FROM cursorDiskKV WHERE key LIKE ?"
+            ).get(`bubbleId:${h.composerId}:%`);
+            bubbleCount = countRow ? countRow.cnt : 0;
+          } catch { /* skip */ }
+        }
+        chats.push({
+          source: 'cursor',
+          composerId: h.composerId,
+          name: h.name || null,
+          createdAt: h.createdAt || null,
+          lastUpdatedAt: h.lastUpdatedAt || null,
+          mode: h.mode,
+          folder,
+          bubbleCount,
+          _type: 'workspace',
+          _modelPref: modelPref,
+          _globalDb: globalDbPath,
+        });
       }
-      chats.push({
-        source: 'cursor',
-        composerId: h.composerId,
-        name: h.name || null,
-        createdAt: h.createdAt || null,
-        lastUpdatedAt: h.lastUpdatedAt || null,
-        mode: h.mode,
-        folder,
-        bubbleCount,
-        _type: 'workspace',
-        _modelPref: modelPref,
-      });
     }
+
+    if (globalDb) globalDb.close();
   }
 
-  if (globalDb) globalDb.close();
   return chats;
 }
 
@@ -328,7 +366,7 @@ function getMessages(chat) {
   }
 
   let globalDb;
-  try { globalDb = new Database(GLOBAL_STORAGE_DB, { readonly: true }); } catch { return []; }
+  try { globalDb = new Database(chat._globalDb || GLOBAL_STORAGE_DB, { readonly: true }); } catch { return []; }
   const bubbles = getComposerBubbles(globalDb, chat.composerId);
   globalDb.close();
   const msgs = bubblesToMessages(bubbles);

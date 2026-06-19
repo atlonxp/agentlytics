@@ -14,6 +14,108 @@ function isSubscriptionAccessAllowed() {
   } catch { return false; }
 }
 
+// --- Scan sources (multi-folder support) ---
+
+const CONFIG_PATH = path.join(HOME, '.agentlytics', 'config.json');
+
+// Read the user-configured extra project-source folders from config.json.
+// Returns the raw string list exactly as stored (may include missing/unmounted
+// paths — callers decide how to surface those).
+function getConfiguredSources() {
+  try {
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    if (Array.isArray(config.projectSources)) {
+      return config.projectSources.filter((s) => typeof s === 'string' && s.trim());
+    }
+  } catch { /* no config / unreadable */ }
+  return [];
+}
+
+// Ordered, realpath-deduped, existing base directories to scan for editor data:
+// the real $HOME first, then each configured source folder. Read fresh on every
+// call so Settings edits apply on the next scan with no restart. Missing or
+// unmounted source paths are silently skipped here, so every adapter that loops
+// these bases transparently gains multi-folder support.
+function getScanBases() {
+  const out = [];
+  const seen = new Set();
+  for (const b of [HOME, ...getConfiguredSources()]) {
+    let rp;
+    try {
+      rp = fs.realpathSync(b);
+      if (!fs.statSync(rp).isDirectory()) continue;
+    } catch { continue; } // missing / unmounted drive
+    if (seen.has(rp)) continue;
+    seen.add(rp);
+    out.push(rp);
+  }
+  return out;
+}
+
+// Inspect a single path and report which editors' chat data is reachable from it,
+// using the same auto-detect rules the adapters use (home-base: <path>/<subdir>,
+// or direct: the path itself is that editor's data dir). Powers the Settings
+// "add source" preview and per-row status. Returns { path, exists, detected: [...] }.
+function detectSourcesAt(inputPath) {
+  const result = { path: inputPath, exists: false, detected: [] };
+  let base;
+  try {
+    base = fs.realpathSync(inputPath);
+    if (!fs.statSync(base).isDirectory()) return result;
+    result.exists = true;
+  } catch { return result; }
+
+  const exists = (p) => { try { return fs.existsSync(p); } catch { return false; } };
+  const countDirs = (p) => {
+    try { return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).length; }
+    catch { return 0; }
+  };
+  const readDir = (p) => { try { return fs.readdirSync(p); } catch { return []; } };
+  const looksLikeClaudeProjectsRoot = (p) =>
+    readDir(p).some((name) => {
+      try { return name.startsWith('-') && fs.statSync(path.join(p, name)).isDirectory(); }
+      catch { return false; }
+    });
+
+  // Claude Code: home-base (<base>/.claude*/projects*), direct (.claude dir), or
+  // a projects-root pointed at directly.
+  let claudeRoots = 0;
+  for (const sib of readDir(base)) {
+    if (!sib.startsWith('.claude')) continue;
+    for (const sub of readDir(path.join(base, sib))) {
+      if (sub.startsWith('projects')) claudeRoots += countDirs(path.join(base, sib, sub));
+    }
+  }
+  if (path.basename(base).startsWith('.claude')) {
+    for (const sub of readDir(base)) {
+      if (sub.startsWith('projects')) claudeRoots += countDirs(path.join(base, sub));
+    }
+  }
+  if (looksLikeClaudeProjectsRoot(base)) claudeRoots += countDirs(base);
+  if (claudeRoots > 0) result.detected.push({ editor: 'claude-code', label: 'Claude Code', projectCount: claudeRoots });
+
+  // Home-base detection for the other editors via their signature subpaths.
+  const SIGS = [
+    { editor: 'codex', label: 'Codex', sub: ['.codex/sessions'] },
+    { editor: 'gemini', label: 'Gemini', sub: ['.gemini/tmp'] },
+    { editor: 'opencode', label: 'OpenCode', sub: ['.local/share/opencode/storage/session'] },
+    { editor: 'codebuff', label: 'Codebuff', sub: ['.config/codebuff/projects', '.config/manicode/projects'] },
+    { editor: 'commandcode', label: 'Command Code', sub: ['.commandcode/projects'] },
+    { editor: 'copilot', label: 'GitHub Copilot CLI', sub: ['.copilot/session-state'] },
+    { editor: 'cursor-cli', label: 'Cursor Agent', sub: ['.cursor/projects'] },
+    { editor: 'goose', label: 'Goose', sub: ['.local/share/goose/sessions'] },
+    { editor: 'cursor', label: 'Cursor', sub: ['Library/Application Support/Cursor/User/workspaceStorage', '.config/Cursor/User/workspaceStorage', '.cursor/chats'] },
+    { editor: 'kiro', label: 'Kiro', sub: ['Library/Application Support/Kiro', '.config/Kiro'] },
+    { editor: 'zed', label: 'Zed', sub: ['Library/Application Support/Zed/threads', '.config/Zed/threads'] },
+  ];
+  for (const s of SIGS) {
+    if (s.sub.some((rel) => exists(path.join(base, rel)))) {
+      result.detected.push({ editor: s.editor, label: s.label });
+    }
+  }
+  return result;
+}
+
 // --- Platform utilities ---
 
 /**
@@ -22,14 +124,14 @@ function isSubscriptionAccessAllowed() {
  * - Windows: ~/AppData/Roaming/{appName}/User/...
  * - Linux: ~/.config/{appName}/User/...
  */
-function getAppDataPath(appName) {
+function getAppDataPath(appName, base = HOME) {
   switch (process.platform) {
     case 'darwin':
-      return path.join(HOME, 'Library', 'Application Support', appName);
+      return path.join(base, 'Library', 'Application Support', appName);
     case 'win32':
-      return path.join(HOME, 'AppData', 'Roaming', appName);
+      return path.join(base, 'AppData', 'Roaming', appName);
     default: // linux, etc.
-      return path.join(HOME, '.config', appName);
+      return path.join(base, '.config', appName);
   }
 }
 
@@ -313,7 +415,11 @@ function queryMcpServerToolsStdio(server, timeout) {
 }
 
 module.exports = {
+  HOME,
   getAppDataPath,
+  getConfiguredSources,
+  getScanBases,
+  detectSourcesAt,
   isSubscriptionAccessAllowed,
   scanArtifacts,
   parseMcpConfigFile,

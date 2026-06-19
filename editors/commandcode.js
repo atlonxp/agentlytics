@@ -11,16 +11,28 @@ const PROJECTS_DIR = path.join(COMMANDCODE_DIR, 'projects');
 
 const name = 'commandcode';
 
+// ~/.commandcode/projects across $HOME and every configured source.
+function projectsDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([PROJECTS_DIR]);
+  for (const base of getScanBases()) {
+    if (path.basename(base) === '.commandcode') dirs.add(path.join(base, 'projects'));
+    else dirs.add(path.join(base, '.commandcode', 'projects'));
+  }
+  return [...dirs];
+}
+
 function getChats() {
   const chats = [];
-  if (!fs.existsSync(PROJECTS_DIR)) return chats;
+  const seen = new Set();
 
-  let projDirs;
-  try { projDirs = fs.readdirSync(PROJECTS_DIR); } catch { return chats; }
+  for (const projectsRoot of projectsDirsForAllBases()) {
+    let projDirs;
+    try { projDirs = fs.readdirSync(projectsRoot); } catch { continue; }
 
-  for (const projDir of projDirs) {
-    const dir = path.join(PROJECTS_DIR, projDir);
-    try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
+    for (const projDir of projDirs) {
+      const dir = path.join(projectsRoot, projDir);
+      try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
 
     // Decode folder path from dir name (e.g. users-fka-code-foo -> /users/fka/code/foo)
     const decodedFolder = '/' + projDir.replace(/-/g, '/');
@@ -30,6 +42,8 @@ function getChats() {
 
     for (const file of files) {
       const sessionId = file.replace('.jsonl', '');
+      if (seen.has(sessionId)) continue;
+      seen.add(sessionId);
       const fullPath = path.join(dir, file);
       const metaPath = path.join(dir, `${sessionId}.meta.json`);
 
@@ -66,6 +80,7 @@ function getChats() {
           _gitBranch: first.gitBranch || null,
         });
       } catch { /* skip */ }
+    }
     }
   }
 

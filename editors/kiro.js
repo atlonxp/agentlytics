@@ -14,112 +14,131 @@ const KIRO_AGENT_DIR = path.join(
 );
 const WORKSPACE_SESSIONS_DIR = path.join(KIRO_AGENT_DIR, 'workspace-sessions');
 
+// Kiro agent dirs across $HOME and every configured source. Chats stamp an
+// absolute _fullPath, so getMessages is already base-safe; only discovery spans bases.
+function kiroAgentDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([KIRO_AGENT_DIR]);
+  for (const base of getScanBases()) {
+    dirs.add(path.join(getAppDataPath('Kiro', base), 'User', 'globalStorage', 'kiro.kiroagent'));
+  }
+  return [...dirs];
+}
+
 function getChats() {
   const chats = [];
-  if (!fs.existsSync(KIRO_AGENT_DIR)) return chats;
+  const seenIds = new Set();
 
-  // Strategy 1: workspace-sessions (structured, has workspace info)
-  if (fs.existsSync(WORKSPACE_SESSIONS_DIR)) {
+  for (const agentDir of kiroAgentDirsForAllBases()) {
+    if (!fs.existsSync(agentDir)) continue;
+    const wsSessionsDir = path.join(agentDir, 'workspace-sessions');
+
+    // Strategy 1: workspace-sessions (structured, has workspace info)
+    if (fs.existsSync(wsSessionsDir)) {
+      try {
+        for (const folder of fs.readdirSync(wsSessionsDir)) {
+          const wsDir = path.join(wsSessionsDir, folder);
+          try { if (!fs.statSync(wsDir).isDirectory()) continue; } catch { continue; }
+
+          // Decode base64 folder name to get workspace path
+          let workspacePath = null;
+          try {
+            workspacePath = Buffer.from(folder, 'base64').toString('utf-8');
+          } catch {}
+
+          const indexPath = path.join(wsDir, 'sessions.json');
+          let sessions = [];
+          try {
+            sessions = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+          } catch { continue; }
+
+          for (const session of sessions) {
+            if (seenIds.has(session.sessionId)) continue;
+            seenIds.add(session.sessionId);
+            const sessionFile = path.join(wsDir, `${session.sessionId}.json`);
+            const exists = fs.existsSync(sessionFile);
+
+            chats.push({
+              source: 'kiro',
+              composerId: session.sessionId,
+              name: cleanTitle(session.title),
+              createdAt: parseInt(session.dateCreated) || null,
+              lastUpdatedAt: exists ? getFileMtime(sessionFile) : parseInt(session.dateCreated) || null,
+              mode: 'kiro',
+              folder: session.workspaceDirectory || workspacePath || null,
+              encrypted: false,
+              bubbleCount: 0,
+              _fullPath: exists ? sessionFile : null,
+              _type: 'workspace-session',
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // Strategy 2: .chat files in hash directories (individual agent executions)
+    // Kiro saves a snapshot of the conversation after each API call, so multiple
+    // .chat files can share the same executionId. We group by executionId and
+    // keep only the latest snapshot (highest message count) per conversation.
+    const executionMap = new Map(); // executionId -> best candidate
     try {
-      for (const folder of fs.readdirSync(WORKSPACE_SESSIONS_DIR)) {
-        const wsDir = path.join(WORKSPACE_SESSIONS_DIR, folder);
-        if (!fs.statSync(wsDir).isDirectory()) continue;
+      for (const dir of fs.readdirSync(agentDir)) {
+        // Skip known non-workspace directories
+        if (['default', 'dev_data', 'index', 'sessions', 'workspace-sessions'].includes(dir)) continue;
+        const fullDir = path.join(agentDir, dir);
+        try { if (!fs.statSync(fullDir).isDirectory()) continue; } catch { continue; }
 
-        // Decode base64 folder name to get workspace path
-        let workspacePath = null;
-        try {
-          workspacePath = Buffer.from(folder, 'base64').toString('utf-8');
-        } catch {}
+        let files;
+        try { files = fs.readdirSync(fullDir).filter(f => f.endsWith('.chat')); } catch { continue; }
 
-        const indexPath = path.join(wsDir, 'sessions.json');
-        let sessions = [];
-        try {
-          sessions = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-        } catch { continue; }
+        for (const file of files) {
+          const fullPath = path.join(fullDir, file);
+          try {
+            const stat = fs.statSync(fullPath);
+            const meta = peekChatMeta(fullPath);
+            const chatId = meta.executionId || `${dir}/${file.replace('.chat', '')}`;
+            if (seenIds.has(chatId)) continue;
 
-        for (const session of sessions) {
-          const sessionFile = path.join(wsDir, `${session.sessionId}.json`);
-          const exists = fs.existsSync(sessionFile);
+            const candidate = {
+              source: 'kiro',
+              composerId: chatId,
+              name: meta.title || null,
+              createdAt: meta.startTime || stat.birthtime.getTime(),
+              lastUpdatedAt: meta.endTime || stat.mtime.getTime(),
+              mode: meta.workflow || 'kiro',
+              folder: meta.folder || null,
+              encrypted: false,
+              bubbleCount: meta.messageCount || 0,
+              _fullPath: fullPath,
+              _type: 'chat-file',
+            };
 
-          chats.push({
-            source: 'kiro',
-            composerId: session.sessionId,
-            name: cleanTitle(session.title),
-            createdAt: parseInt(session.dateCreated) || null,
-            lastUpdatedAt: exists ? getFileMtime(sessionFile) : parseInt(session.dateCreated) || null,
-            mode: 'kiro',
-            folder: session.workspaceDirectory || workspacePath || null,
-            encrypted: false,
-            bubbleCount: 0,
-            _fullPath: exists ? sessionFile : null,
-            _type: 'workspace-session',
-          });
+            // Keep the snapshot with the most messages per executionId
+            if (meta.executionId) {
+              const existing = executionMap.get(meta.executionId);
+              if (!existing || meta.messageCount > existing.bubbleCount) {
+                // Update createdAt to the earliest startTime seen
+                if (existing && existing.createdAt < candidate.createdAt) {
+                  candidate.createdAt = existing.createdAt;
+                }
+                executionMap.set(meta.executionId, candidate);
+              } else if (existing && meta.startTime && meta.startTime < existing.createdAt) {
+                existing.createdAt = meta.startTime;
+              }
+            } else {
+              chats.push(candidate);
+            }
+          } catch {}
         }
       }
     } catch {}
-  }
 
-  // Strategy 2: .chat files in hash directories (individual agent executions)
-  // Kiro saves a snapshot of the conversation after each API call, so multiple
-  // .chat files can share the same executionId. We group by executionId and
-  // keep only the latest snapshot (highest message count) per conversation.
-  const seenIds = new Set(chats.map(c => c.composerId));
-  const executionMap = new Map(); // executionId -> best candidate
-  try {
-    for (const dir of fs.readdirSync(KIRO_AGENT_DIR)) {
-      // Skip known non-workspace directories
-      if (['default', 'dev_data', 'index', 'sessions', 'workspace-sessions'].includes(dir)) continue;
-      const fullDir = path.join(KIRO_AGENT_DIR, dir);
-      if (!fs.statSync(fullDir).isDirectory()) continue;
-
-      let files;
-      try { files = fs.readdirSync(fullDir).filter(f => f.endsWith('.chat')); } catch { continue; }
-
-      for (const file of files) {
-        const fullPath = path.join(fullDir, file);
-        try {
-          const stat = fs.statSync(fullPath);
-          const meta = peekChatMeta(fullPath);
-          const chatId = meta.executionId || `${dir}/${file.replace('.chat', '')}`;
-          if (seenIds.has(chatId)) continue;
-
-          const candidate = {
-            source: 'kiro',
-            composerId: chatId,
-            name: meta.title || null,
-            createdAt: meta.startTime || stat.birthtime.getTime(),
-            lastUpdatedAt: meta.endTime || stat.mtime.getTime(),
-            mode: meta.workflow || 'kiro',
-            folder: meta.folder || null,
-            encrypted: false,
-            bubbleCount: meta.messageCount || 0,
-            _fullPath: fullPath,
-            _type: 'chat-file',
-          };
-
-          // Keep the snapshot with the most messages per executionId
-          if (meta.executionId) {
-            const existing = executionMap.get(meta.executionId);
-            if (!existing || meta.messageCount > existing.bubbleCount) {
-              // Update createdAt to the earliest startTime seen
-              if (existing && existing.createdAt < candidate.createdAt) {
-                candidate.createdAt = existing.createdAt;
-              }
-              executionMap.set(meta.executionId, candidate);
-            } else if (existing && meta.startTime && meta.startTime < existing.createdAt) {
-              existing.createdAt = meta.startTime;
-            }
-          } else {
-            chats.push(candidate);
-          }
-        } catch {}
-      }
+    // Add the deduplicated execution sessions for this base
+    for (const chat of executionMap.values()) {
+      if (seenIds.has(chat.composerId)) continue;
+      seenIds.add(chat.composerId);
+      chats.push(chat);
     }
-  } catch {}
-
-  // Add the deduplicated execution sessions
-  for (const chat of executionMap.values()) {
-    chats.push(chat);
   }
 
   return chats;

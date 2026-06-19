@@ -176,6 +176,17 @@ export async function fetchAllProjects() {
   return res.json();
 }
 
+// Project sources (multi-folder scan support)
+export async function fetchSources() {
+  const res = await fetch(`${BASE}/api/sources`);
+  return res.json();
+}
+
+export async function probeSource(path) {
+  const res = await fetch(`${BASE}/api/sources/probe?path=${encodeURIComponent(path)}`);
+  return res.json();
+}
+
 export async function executeQuery(sql) {
   const res = await fetch(`${BASE}/api/query`, {
     method: 'POST',

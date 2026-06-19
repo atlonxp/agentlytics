@@ -11,30 +11,44 @@ const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 const name = 'claude';
 
-// Return every Claude Code projects-root directory reachable from $HOME.
-// Scans `$HOME/.claude*/projects*` so that:
-//   • ~/.claude/projects/                 (live)
-//   • ~/.claude/projects_dec16/           (in-place user split)
-//   • ~/.claude.20260131_0811/projects/   (timestamped full-dir backup)
-// are all merged into a single logical chat stream.
+// Return every Claude Code projects-root directory reachable from any configured
+// scan base ($HOME plus user-added source folders — see editors/base.js).
+// For each base, three auto-detected layouts are merged into one chat stream:
+//   • home-base:      <base>/.claude*/projects*   (e.g. ~/.claude/projects, ~/.claude/projects_dec16,
+//                                                  ~/.claude.20260131_0811/projects, /Volumes/Ext/.claude/projects)
+//   • direct .claude: <base>/projects*            (base itself is a .claude* dir)
+//   • direct root:    <base>                       (base itself is a projects-root: holds encoded -…- subdirs)
 function getProjectRoots() {
-  const home = os.homedir();
+  const { getScanBases } = require('./base');
   const roots = [];
-  let siblings;
-  try { siblings = fs.readdirSync(home); } catch { return roots; }
-  for (const sib of siblings) {
-    if (!sib.startsWith('.claude')) continue;
-    const sibPath = path.join(home, sib);
-    try { if (!fs.statSync(sibPath).isDirectory()) continue; } catch { continue; }
-    let inner;
-    try { inner = fs.readdirSync(sibPath); } catch { continue; }
-    for (const sub of inner) {
-      if (!sub.startsWith('projects')) continue;
-      const p = path.join(sibPath, sub);
-      try { if (fs.statSync(p).isDirectory()) roots.push(p); } catch {}
+  const add = (p) => { try { if (fs.statSync(p).isDirectory()) roots.push(p); } catch {} };
+  const readDir = (p) => { try { return fs.readdirSync(p); } catch { return []; } };
+  const looksLikeProjectsRoot = (p) =>
+    readDir(p).some((name) => {
+      try { return name.startsWith('-') && fs.statSync(path.join(p, name)).isDirectory(); }
+      catch { return false; }
+    });
+
+  for (const base of getScanBases()) {
+    // home-base: <base>/.claude*/projects*
+    for (const sib of readDir(base)) {
+      if (!sib.startsWith('.claude')) continue;
+      const sibPath = path.join(base, sib);
+      try { if (!fs.statSync(sibPath).isDirectory()) continue; } catch { continue; }
+      for (const sub of readDir(sibPath)) {
+        if (sub.startsWith('projects')) add(path.join(sibPath, sub));
+      }
     }
+    // direct: base itself is a .claude* dir → scan its projects*
+    if (path.basename(base).startsWith('.claude')) {
+      for (const sub of readDir(base)) {
+        if (sub.startsWith('projects')) add(path.join(base, sub));
+      }
+    }
+    // direct: base itself is a projects-root (contains encoded -…- project dirs)
+    if (looksLikeProjectsRoot(base)) add(base);
   }
-  return roots;
+  return [...new Set(roots)];
 }
 
 // Recursively collect all .jsonl files beneath `root`.

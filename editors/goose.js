@@ -22,12 +22,12 @@ function getDatabase() {
   return Database;
 }
 
-function queryDb(sql) {
-  if (!fs.existsSync(DB_PATH)) return [];
+function queryDb(sql, dbPath = DB_PATH) {
+  if (!fs.existsSync(dbPath)) return [];
   const Db = getDatabase();
   if (!Db) return []; // Fallback if better-sqlite3 not available
   try {
-    const db = new Db(DB_PATH, { readonly: true });
+    const db = new Db(dbPath, { readonly: true });
     const rows = db.prepare(sql).all();
     db.close();
     return rows;
@@ -53,66 +53,83 @@ function getConfigModel() {
   return _configModel;
 }
 
+// ~/.local/share/goose/sessions across $HOME and every configured source.
+function gooseDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([GOOSE_DIR]);
+  for (const base of getScanBases()) {
+    dirs.add(path.join(base, '.local', 'share', 'goose', 'sessions'));
+  }
+  return [...dirs];
+}
+
 function getChats() {
   const chats = [];
-
+  const seen = new Set();
   const configModel = getConfigModel();
 
-  // --- SQLite sessions (v1.10.0+) ---
-  const dbSessions = queryDb(
-    `SELECT id, name, description, working_dir, created_at, updated_at,
-            total_tokens, input_tokens, output_tokens, provider_name, model_config_json,
-            (SELECT count(*) FROM messages m WHERE m.session_id = s.id) as msg_count
-     FROM sessions s ORDER BY updated_at DESC`
-  );
+  for (const gooseDir of gooseDirsForAllBases()) {
+    const dbPath = path.join(gooseDir, 'sessions.db');
 
-  const dbSessionIds = new Set();
-  for (const row of dbSessions) {
-    dbSessionIds.add(row.id);
-    chats.push({
-      source: 'goose',
-      composerId: row.id,
-      name: cleanTitle(row.name || row.description),
-      createdAt: parseTimestamp(row.created_at),
-      lastUpdatedAt: parseTimestamp(row.updated_at),
-      mode: 'goose',
-      folder: row.working_dir || null,
-      encrypted: false,
-      bubbleCount: row.msg_count || 0,
-      _storage: 'db',
-      _inputTokens: row.input_tokens,
-      _outputTokens: row.output_tokens,
-      _model: extractSessionModel(row) || configModel,
-    });
-  }
+    // --- SQLite sessions (v1.10.0+) ---
+    const dbSessions = queryDb(
+      `SELECT id, name, description, working_dir, created_at, updated_at,
+              total_tokens, input_tokens, output_tokens, provider_name, model_config_json,
+              (SELECT count(*) FROM messages m WHERE m.session_id = s.id) as msg_count
+       FROM sessions s ORDER BY updated_at DESC`,
+      dbPath
+    );
 
-  // --- Legacy JSONL files ---
-  if (fs.existsSync(GOOSE_DIR)) {
-    let files;
-    try { files = fs.readdirSync(GOOSE_DIR).filter(f => f.endsWith('.jsonl')); } catch { files = []; }
+    for (const row of dbSessions) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      chats.push({
+        source: 'goose',
+        composerId: row.id,
+        name: cleanTitle(row.name || row.description),
+        createdAt: parseTimestamp(row.created_at),
+        lastUpdatedAt: parseTimestamp(row.updated_at),
+        mode: 'goose',
+        folder: row.working_dir || null,
+        encrypted: false,
+        bubbleCount: row.msg_count || 0,
+        _storage: 'db',
+        _dbPath: dbPath,
+        _inputTokens: row.input_tokens,
+        _outputTokens: row.output_tokens,
+        _model: extractSessionModel(row) || configModel,
+      });
+    }
 
-    for (const file of files) {
-      const sessionId = file.replace('.jsonl', '');
-      if (dbSessionIds.has(sessionId)) continue; // already in DB
+    // --- Legacy JSONL files ---
+    if (fs.existsSync(gooseDir)) {
+      let files;
+      try { files = fs.readdirSync(gooseDir).filter(f => f.endsWith('.jsonl')); } catch { files = []; }
 
-      const fullPath = path.join(GOOSE_DIR, file);
-      try {
-        const stat = fs.statSync(fullPath);
-        const meta = peekJsonlMeta(fullPath);
-        chats.push({
-          source: 'goose',
-          composerId: sessionId,
-          name: meta.firstPrompt ? cleanTitle(meta.firstPrompt) : null,
-          createdAt: meta.timestamp || stat.birthtime.getTime(),
-          lastUpdatedAt: stat.mtime.getTime(),
-          mode: 'goose',
-          folder: meta.workingDir || null,
-          encrypted: false,
-          _storage: 'jsonl',
-          _fullPath: fullPath,
-          _model: configModel,
-        });
-      } catch { /* skip */ }
+      for (const file of files) {
+        const sessionId = file.replace('.jsonl', '');
+        if (seen.has(sessionId)) continue; // already in a DB or another base
+        seen.add(sessionId);
+
+        const fullPath = path.join(gooseDir, file);
+        try {
+          const stat = fs.statSync(fullPath);
+          const meta = peekJsonlMeta(fullPath);
+          chats.push({
+            source: 'goose',
+            composerId: sessionId,
+            name: meta.firstPrompt ? cleanTitle(meta.firstPrompt) : null,
+            createdAt: meta.timestamp || stat.birthtime.getTime(),
+            lastUpdatedAt: stat.mtime.getTime(),
+            mode: 'goose',
+            folder: meta.workingDir || null,
+            encrypted: false,
+            _storage: 'jsonl',
+            _fullPath: fullPath,
+            _model: configModel,
+          });
+        } catch { /* skip */ }
+      }
     }
   }
 
@@ -175,7 +192,8 @@ function getMessages(chat) {
 function getMessagesFromDb(chat) {
   const rows = queryDb(
     `SELECT role, content_json, created_timestamp FROM messages
-     WHERE session_id = '${chat.composerId}' ORDER BY created_timestamp ASC`
+     WHERE session_id = '${chat.composerId}' ORDER BY created_timestamp ASC`,
+    chat._dbPath || DB_PATH
   );
 
   const result = [];

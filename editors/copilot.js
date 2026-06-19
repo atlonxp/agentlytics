@@ -46,16 +46,28 @@ function parseEvents(sessionDir) {
   } catch { return []; }
 }
 
+// ~/.copilot/session-state across $HOME and every configured source.
+function sessionStateDirsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dirs = new Set([SESSION_STATE_DIR]);
+  for (const base of getScanBases()) {
+    if (path.basename(base) === '.copilot') dirs.add(path.join(base, 'session-state'));
+    else dirs.add(path.join(base, '.copilot', 'session-state'));
+  }
+  return [...dirs];
+}
+
 function getChats() {
   const chats = [];
-  if (!fs.existsSync(SESSION_STATE_DIR)) return chats;
+  const seen = new Set();
 
-  let sessionDirs;
-  try { sessionDirs = fs.readdirSync(SESSION_STATE_DIR); } catch { return chats; }
+  for (const stateDir of sessionStateDirsForAllBases()) {
+    let sessionDirs;
+    try { sessionDirs = fs.readdirSync(stateDir); } catch { continue; }
 
-  for (const dirName of sessionDirs) {
-    const sessionDir = path.join(SESSION_STATE_DIR, dirName);
-    try { if (!fs.statSync(sessionDir).isDirectory()) continue; } catch { continue; }
+    for (const dirName of sessionDirs) {
+      const sessionDir = path.join(stateDir, dirName);
+      try { if (!fs.statSync(sessionDir).isDirectory()) continue; } catch { continue; }
 
     const meta = parseWorkspace(sessionDir);
     if (!meta) continue;
@@ -73,9 +85,12 @@ function getChats() {
     const shutdown = events.find(e => e.type === 'session.shutdown');
     const model = shutdown?.data?.currentModel || null;
 
+    const composerId = meta.id || dirName;
+    if (seen.has(composerId)) continue;
+    seen.add(composerId);
     chats.push({
       source: 'copilot-cli',
-      composerId: meta.id || dirName,
+      composerId,
       name: meta.summary || cleanPrompt(firstUser?.data?.content),
       createdAt: meta.created_at ? new Date(meta.created_at).getTime() : null,
       lastUpdatedAt: meta.updated_at ? new Date(meta.updated_at).getTime() : null,
@@ -87,6 +102,7 @@ function getChats() {
       _model: model,
       _shutdownData: shutdown?.data || null,
     });
+    }
   }
 
   return chats;

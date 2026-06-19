@@ -21,11 +21,18 @@ const os = require('os');
 
 const HOME = os.homedir();
 
+// ~/.config/<variant>/projects across $HOME and every configured source.
 function getProjectRoots() {
+  const { getScanBases } = require('./base');
   const roots = [];
-  for (const variant of ['manicode', 'manicode-dev', 'manicode-staging']) {
-    const projectsDir = path.join(HOME, '.config', variant, 'projects');
-    if (fs.existsSync(projectsDir)) roots.push({ variant, projectsDir });
+  const seen = new Set();
+  for (const base of getScanBases()) {
+    for (const variant of ['manicode', 'manicode-dev', 'manicode-staging']) {
+      const projectsDir = path.join(base, '.config', variant, 'projects');
+      if (seen.has(projectsDir)) continue;
+      seen.add(projectsDir);
+      if (fs.existsSync(projectsDir)) roots.push({ variant, projectsDir });
+    }
   }
   return roots;
 }
@@ -213,6 +220,7 @@ const labels = { 'codebuff': 'Codebuff' };
 
 function getChats() {
   const chats = [];
+  const seen = new Set();
   const roots = getProjectRoots();
   if (roots.length === 0) return chats;
 
@@ -252,9 +260,12 @@ function getChats() {
         const runState = safeReadJson(path.join(chatDir, 'run-state.json'));
         const folder = extractCwdFromRunState(runState) || null;
 
+        const composerId = `${variantPrefix}${projectBase}::${chatId}`;
+        if (seen.has(composerId)) continue;
+        seen.add(composerId);
         chats.push({
           source: 'codebuff',
-          composerId: `${variantPrefix}${projectBase}::${chatId}`,
+          composerId,
           name: title,
           createdAt: parseChatIdToTs(chatId),
           lastUpdatedAt: dirStat.mtime.getTime(),

@@ -8,19 +8,28 @@ const Database = require('better-sqlite3');
 // - Windows: %LOCALAPPDATA%\Zed (not Roaming)
 // - macOS: ~/Library/Application Support/Zed
 // - Linux: ~/.config/Zed
-function getZedDataPath() {
-  const home = os.homedir();
+function getZedDataPath(base = os.homedir()) {
   switch (process.platform) {
     case 'win32':
-      return path.join(home, 'AppData', 'Local', 'Zed');
+      return path.join(base, 'AppData', 'Local', 'Zed');
     case 'darwin':
-      return path.join(home, 'Library', 'Application Support', 'Zed');
+      return path.join(base, 'Library', 'Application Support', 'Zed');
     default: // linux, etc.
-      return path.join(home, '.config', 'Zed');
+      return path.join(base, '.config', 'Zed');
   }
 }
 
 const THREADS_DB = path.join(getZedDataPath(), 'threads', 'threads.db');
+
+// Zed threads.db across $HOME and every configured source.
+function threadsDbsForAllBases() {
+  const { getScanBases } = require('./base');
+  const dbs = new Set([THREADS_DB]);
+  for (const base of getScanBases()) {
+    dbs.add(path.join(getZedDataPath(base), 'threads', 'threads.db'));
+  }
+  return [...dbs];
+}
 
 // ============================================================
 // Decompress zstd blob via CLI (with cross-platform support)
@@ -65,10 +74,10 @@ function decompressZstd(buf) {
 // Query SQLite using better-sqlite3 (cross-platform)
 // ============================================================
 
-function queryDb(sql) {
-  if (!fs.existsSync(THREADS_DB)) return [];
+function queryDb(sql, dbPath = THREADS_DB) {
+  if (!fs.existsSync(dbPath)) return [];
   try {
-    const db = new Database(THREADS_DB, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(sql).all();
     db.close();
     return rows;
@@ -78,10 +87,10 @@ function queryDb(sql) {
   }
 }
 
-function queryBlob(id) {
-  if (!fs.existsSync(THREADS_DB)) return null;
+function queryBlob(id, dbPath = THREADS_DB) {
+  if (!fs.existsSync(dbPath)) return null;
   try {
-    const db = new Database(THREADS_DB, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
     const row = db.prepare('SELECT data FROM threads WHERE id = ?').get(id);
     db.close();
     return row ? row.data : null;
@@ -97,27 +106,37 @@ function queryBlob(id) {
 const name = 'zed';
 
 function getChats() {
-  const rows = queryDb(
-    'SELECT id, summary, updated_at, data_type, length(data) as data_size, parent_id, worktree_branch FROM threads ORDER BY updated_at DESC'
-  );
-
-  return rows.map(row => ({
-    source: 'zed',
-    composerId: row.id,
-    name: row.summary || null,
-    createdAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
-    lastUpdatedAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
-    mode: 'thread',
-    folder: null,
-    encrypted: false,
-    bubbleCount: 0,
-    _dataType: row.data_type,
-    _gitBranch: row.worktree_branch,
-  }));
+  const chats = [];
+  const seen = new Set();
+  for (const dbPath of threadsDbsForAllBases()) {
+    const rows = queryDb(
+      'SELECT id, summary, updated_at, data_type, length(data) as data_size, parent_id, worktree_branch FROM threads ORDER BY updated_at DESC',
+      dbPath
+    );
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      chats.push({
+        source: 'zed',
+        composerId: row.id,
+        name: row.summary || null,
+        createdAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
+        lastUpdatedAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
+        mode: 'thread',
+        folder: null,
+        encrypted: false,
+        bubbleCount: 0,
+        _dataType: row.data_type,
+        _gitBranch: row.worktree_branch,
+        _dbPath: dbPath,
+      });
+    }
+  }
+  return chats;
 }
 
 function getMessages(chat) {
-  const blob = queryBlob(chat.composerId);
+  const blob = queryBlob(chat.composerId, chat._dbPath || THREADS_DB);
   if (!blob) return [];
 
   let json;

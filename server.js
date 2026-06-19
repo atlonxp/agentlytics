@@ -358,6 +358,37 @@ app.put('/api/config', (req, res) => {
   }
 });
 
+// ============================================================
+// Project sources (multi-folder scan support)
+// ============================================================
+
+// Probe an arbitrary path: does it exist, and which editors' data is reachable?
+// Powers the Settings "add source" preview.
+app.get('/api/sources/probe', (req, res) => {
+  const { detectSourcesAt } = require('./editors/base');
+  const p = req.query.path;
+  if (!p || !p.trim()) return res.status(400).json({ error: 'path query param required' });
+  try {
+    res.json(detectSourcesAt(p.trim()));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List the locked default ($HOME) plus every configured source, each with its
+// live detection status, for the Settings "Project Sources" card.
+app.get('/api/sources', (req, res) => {
+  const { detectSourcesAt, getConfiguredSources, HOME } = require('./editors/base');
+  try {
+    res.json({
+      home: { ...detectSourcesAt(HOME), default: true },
+      sources: getConfiguredSources().map((p) => detectSourcesAt(p)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/check-ai', async (req, res) => {
   const folder = req.query.folder;
   if (!folder) return res.status(400).json({ error: 'folder query param required' });

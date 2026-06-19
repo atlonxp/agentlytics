@@ -24,16 +24,32 @@ const DB_PATH = getOpenCodeDbPath();
 // Query SQLite using better-sqlite3
 // ============================================================
 
-function queryDb(sql) {
-  if (!fs.existsSync(DB_PATH)) return [];
+function queryDb(sql, dbPath = DB_PATH) {
+  if (!fs.existsSync(dbPath)) return [];
   try {
-    const db = new Database(DB_PATH, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(sql).all();
     db.close();
     return rows;
   } catch {
     return [];
   }
+}
+
+// OpenCode storage roots ({storageDir, dbPath}) across $HOME and every
+// configured source. getMessages reads back via the base each chat was found
+// under (stamped as _storageDir/_dbPath), so external sources resolve correctly.
+function opencodeRootsForAllBases() {
+  const { getScanBases } = require('./base');
+  const roots = [{ storageDir: STORAGE_DIR, dbPath: DB_PATH }];
+  const seen = new Set([STORAGE_DIR]);
+  for (const base of getScanBases()) {
+    const sd = path.join(base, '.local', 'share', 'opencode', 'storage');
+    if (seen.has(sd)) continue;
+    seen.add(sd);
+    roots.push({ storageDir: sd, dbPath: path.join(base, '.local', 'share', 'opencode', 'opencode.db') });
+  }
+  return roots;
 }
 
 function extractModelInfo(data) {
@@ -68,20 +84,21 @@ function extractTokenInfo(data) {
   };
 }
 
-function getSqliteSessions() {
+function getSqliteSessions(dbPath = DB_PATH) {
   return queryDb(
     `SELECT s.id, s.title, s.directory, s.time_created, s.time_updated,
             p.worktree, p.name as project_name,
             (SELECT count(*) FROM message m WHERE m.session_id = s.id) as msg_count
      FROM session s LEFT JOIN project p ON s.project_id = p.id
-     ORDER BY s.time_updated DESC`
+     ORDER BY s.time_updated DESC`,
+    dbPath
   );
 }
 
-function getSqliteMessages(sessionId) {
-  if (!fs.existsSync(DB_PATH)) return [];
+function getSqliteMessages(sessionId, dbPath = DB_PATH) {
+  if (!fs.existsSync(dbPath)) return [];
   try {
-    const db = new Database(DB_PATH, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
     const messages = db.prepare(
       `SELECT m.id as msg_id, m.data as msg_data, m.time_created
        FROM message m WHERE m.session_id = ? ORDER BY m.time_created ASC`
@@ -158,13 +175,14 @@ function readJson(filePath) {
   } catch { return null; }
 }
 
-function getAllSessions() {
+function getAllSessions(storageDir = STORAGE_DIR) {
   const sessions = [];
-  if (!fs.existsSync(SESSION_DIR)) return sessions;
+  const sessionDir = path.join(storageDir, 'session');
+  if (!fs.existsSync(sessionDir)) return sessions;
 
-  for (const projectHash of fs.readdirSync(SESSION_DIR)) {
-    const projectDir = path.join(SESSION_DIR, projectHash);
-    if (!fs.statSync(projectDir).isDirectory()) continue;
+  for (const projectHash of fs.readdirSync(sessionDir)) {
+    const projectDir = path.join(sessionDir, projectHash);
+    try { if (!fs.statSync(projectDir).isDirectory()) continue; } catch { continue; }
 
     let files;
     try { files = fs.readdirSync(projectDir).filter(f => f.startsWith('ses_') && f.endsWith('.json')); } catch { continue; }
@@ -173,15 +191,15 @@ function getAllSessions() {
       const filePath = path.join(projectDir, file);
       const data = readJson(filePath);
       if (data && data.id) {
-        sessions.push({ ...data, _filePath: filePath });
+        sessions.push({ ...data, _filePath: filePath, _storageDir: storageDir });
       }
     }
   }
   return sessions;
 }
 
-function getMessageCount(sessionId) {
-  const sessionMsgDir = path.join(MESSAGE_DIR, sessionId);
+function getMessageCount(sessionId, storageDir = STORAGE_DIR) {
+  const sessionMsgDir = path.join(storageDir, 'message', sessionId);
   if (!fs.existsSync(sessionMsgDir)) return 0;
 
   try {
@@ -189,8 +207,8 @@ function getMessageCount(sessionId) {
   } catch { return 0; }
 }
 
-function getMessagesForSession(sessionId) {
-  const sessionMsgDir = path.join(MESSAGE_DIR, sessionId);
+function getMessagesForSession(sessionId, storageDir = STORAGE_DIR) {
+  const sessionMsgDir = path.join(storageDir, 'message', sessionId);
   if (!fs.existsSync(sessionMsgDir)) return [];
 
   let files;
@@ -210,7 +228,7 @@ function getMessagesForSession(sessionId) {
   const messages = [];
   for (const msg of rawMsgs) {
     // Get parts for this message
-    const msgPartDir = path.join(PART_DIR, msg.id);
+    const msgPartDir = path.join(storageDir, 'part', msg.id);
     const parts = [];
     if (fs.existsSync(msgPartDir)) {
       try {
@@ -281,45 +299,48 @@ function getChats() {
   const seen = new Set();
   const chats = [];
 
-  // 1. JSON file-based sessions (newer storage format)
-  const fileSessions = getAllSessions();
-  for (const s of fileSessions) {
-    seen.add(s.id);
-    chats.push({
-      source: 'opencode',
-      composerId: s.id,
-      name: s.title || null,
-      createdAt: s.time?.created || null,
-      lastUpdatedAt: s.time?.updated || null,
-      mode: s.mode || 'opencode',
-      folder: s.directory || null,
-      encrypted: false,
-      bubbleCount: getMessageCount(s.id),
-      _agent: s.agent,
-      _model: s.modelID,
-      _provider: s.providerID,
-      _sessionData: s,
-      _storageType: 'file',
-    });
-  }
+  for (const { storageDir, dbPath } of opencodeRootsForAllBases()) {
+    // 1. JSON file-based sessions (newer storage format)
+    for (const s of getAllSessions(storageDir)) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      chats.push({
+        source: 'opencode',
+        composerId: s.id,
+        name: s.title || null,
+        createdAt: s.time?.created || null,
+        lastUpdatedAt: s.time?.updated || null,
+        mode: s.mode || 'opencode',
+        folder: s.directory || null,
+        encrypted: false,
+        bubbleCount: getMessageCount(s.id, storageDir),
+        _agent: s.agent,
+        _model: s.modelID,
+        _provider: s.providerID,
+        _sessionData: s,
+        _storageType: 'file',
+        _storageDir: storageDir,
+      });
+    }
 
-  // 2. SQLite sessions (older/primary store) — add any not already found in files
-  const dbSessions = getSqliteSessions();
-  for (const row of dbSessions) {
-    if (seen.has(row.id)) continue;
-    seen.add(row.id);
-    chats.push({
-      source: 'opencode',
-      composerId: row.id,
-      name: cleanTitle(row.title),
-      createdAt: row.time_created || null,
-      lastUpdatedAt: row.time_updated || null,
-      mode: 'opencode',
-      folder: row.worktree || row.directory || null,
-      encrypted: false,
-      bubbleCount: row.msg_count || 0,
-      _storageType: 'sqlite',
-    });
+    // 2. SQLite sessions (older/primary store) — add any not already found in files
+    for (const row of getSqliteSessions(dbPath)) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      chats.push({
+        source: 'opencode',
+        composerId: row.id,
+        name: cleanTitle(row.title),
+        createdAt: row.time_created || null,
+        lastUpdatedAt: row.time_updated || null,
+        mode: 'opencode',
+        folder: row.worktree || row.directory || null,
+        encrypted: false,
+        bubbleCount: row.msg_count || 0,
+        _storageType: 'sqlite',
+        _dbPath: dbPath,
+      });
+    }
   }
 
   return chats.sort((a, b) => (b.lastUpdatedAt || 0) - (a.lastUpdatedAt || 0));
@@ -332,10 +353,11 @@ function cleanTitle(title) {
 }
 
 function getMessages(chat) {
-  // Prefer file-based messages; fall back to SQLite
-  const fileMessages = getMessagesForSession(chat.composerId);
+  // Prefer file-based messages; fall back to SQLite — resolve via the base this
+  // chat was found under (falls back to $HOME storage for older cached chats).
+  const fileMessages = getMessagesForSession(chat.composerId, chat._storageDir || STORAGE_DIR);
   if (fileMessages.length > 0) return fileMessages;
-  return getSqliteMessages(chat.composerId);
+  return getSqliteMessages(chat.composerId, chat._dbPath || DB_PATH);
 }
 
 const labels = { 'opencode': 'OpenCode' };

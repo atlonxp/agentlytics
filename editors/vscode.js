@@ -15,6 +15,24 @@ const VARIANTS = [
   },
 ];
 
+// VS Code variants resolved under $HOME and every configured source. Chat
+// sessions stamp an absolute _filePath, so getMessages is already base-safe;
+// only discovery needs to span bases.
+function vscodeVariantsForAllBases() {
+  const { getScanBases } = require('./base');
+  const out = [];
+  const seen = new Set();
+  for (const base of getScanBases()) {
+    for (const [id, app] of [['vscode', 'Code'], ['vscode-insiders', 'Code - Insiders']]) {
+      const appSupport = getAppDataPath(app, base);
+      if (seen.has(appSupport)) continue;
+      seen.add(appSupport);
+      out.push({ id, appSupport });
+    }
+  }
+  return out;
+}
+
 // ============================================================
 // JSONL reconstruction: kind:0 = init, kind:1 = patch at key path
 // ============================================================
@@ -158,14 +176,15 @@ const name = 'vscode';
 
 function getChats() {
   const chats = [];
+  const seen = new Set();
 
-  for (const variant of VARIANTS) {
+  for (const variant of vscodeVariantsForAllBases()) {
     if (!fs.existsSync(variant.appSupport)) continue;
 
     // 1. Global (empty window) chat sessions
     const globalDir = path.join(variant.appSupport, 'User', 'globalStorage', 'emptyWindowChatSessions');
     if (fs.existsSync(globalDir)) {
-      collectSessions(globalDir, null, variant.id, chats);
+      collectSessions(globalDir, null, variant.id, chats, seen);
     }
 
     // 2. Workspace chat sessions
@@ -173,11 +192,11 @@ function getChats() {
     if (fs.existsSync(wsRoot)) {
       for (const wsHash of fs.readdirSync(wsRoot)) {
         const wsDir = path.join(wsRoot, wsHash);
-        if (!fs.statSync(wsDir).isDirectory()) continue;
+        try { if (!fs.statSync(wsDir).isDirectory()) continue; } catch { continue; }
         const chatDir = path.join(wsDir, 'chatSessions');
         if (!fs.existsSync(chatDir)) continue;
         const folder = getWorkspaceFolder(wsDir);
-        collectSessions(chatDir, folder, variant.id, chats);
+        collectSessions(chatDir, folder, variant.id, chats, seen);
       }
     }
   }
@@ -185,7 +204,7 @@ function getChats() {
   return chats;
 }
 
-function collectSessions(dir, folder, source, chats) {
+function collectSessions(dir, folder, source, chats, seen) {
   let files;
   try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl') || f.endsWith('.json')); } catch { return; }
 
@@ -195,9 +214,12 @@ function collectSessions(dir, folder, source, chats) {
       const stat = fs.statSync(filePath);
       // Quick peek: for listing we only need metadata, not full reconstruction
       const meta = peekMeta(filePath);
+      const composerId = meta.sessionId || file.replace(/\.(jsonl|json)$/, '');
+      if (seen && seen.has(composerId)) continue;
+      if (seen) seen.add(composerId);
       chats.push({
         source,
-        composerId: meta.sessionId || file.replace(/\.(jsonl|json)$/, ''),
+        composerId,
         name: meta.title || meta.firstUserText || null,
         createdAt: meta.createdAt || stat.birthtime.getTime(),
         lastUpdatedAt: stat.mtime.getTime(),

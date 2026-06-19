@@ -5,7 +5,7 @@
 <h1 align="center">Agentlytics</h1>
 
 <p align="center">
-  <strong>Your Cursor, Windsurf, Claude Code sessions — analyzed, unified, tracked.</strong><br>
+  <strong>Your Cursor, Devin, Claude Code sessions — analyzed, unified, tracked.</strong><br>
   <sub>One command to turn scattered AI conversations from <b>17 editors</b> into a unified analytics dashboard.<br>Sessions, costs, models, tools — finally in one place. 100% local.</sub>
 </p>
 
@@ -14,7 +14,6 @@
   <a href="#supported-editors"><img src="https://img.shields.io/badge/editors-17-818cf8" alt="editors"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520.19%20%7C%20%E2%89%A522.12-brightgreen" alt="node"></a>
-  <a href="https://deno.land"><img src="https://img.shields.io/badge/deno-%E2%89%A52.0-000?logo=deno" alt="deno"></a>
 </p>
 
 <p align="center">
@@ -25,7 +24,7 @@
 
 ## The Problem
 
-You switch between Cursor, Windsurf, Claude Code, VS Code Copilot, and more — each with its own siloed conversation history.
+You switch between Cursor, Devin, Claude Code, VS Code Copilot, and more — each with its own siloed conversation history.
 
 - ✗ Sessions scattered across editors, no unified view
 - ✗ No idea how much you're spending on AI tokens
@@ -50,49 +49,6 @@ bunx agentlytics
 
 Opens at **http://localhost:4637**. Requires Node.js ≥ 20.19 or ≥ 22.12, macOS. No data ever leaves your machine.
 
-### Deno (Sandboxed)
-
-Run a lightweight, zero-dependency analytics scan with Deno's permission sandbox — directly from a URL, no install needed:
-
-```bash
-deno run --allow-read --allow-env https://raw.githubusercontent.com/f/agentlytics/master/mod.ts
-```
-
-Only `--allow-read` and `--allow-env` are required. No network access, no file writes, no code execution — just reads your local editor data and prints a summary.
-
-```
-  (● ●) [● ●]   Agentlytics — Deno Sandboxed Edition
-  {● ●} <● ●>   Lightweight CLI analytics for AI coding agents
-
-  ✓ Claude Code            8 sessions
-  ✓ VS Code                23 sessions
-  ✓ VS Code Insiders       66 sessions
-  ● Cursor                 detected
-  ✓ Codex CLI              3 sessions
-  ...
-
-  Summary
-  Sessions           109
-  Messages           459
-  Projects           18
-  Editors            7 of 15 checked
-  Date range         2025-04-02 → 2026-03-09
-```
-
-Add `--json` for machine-readable output:
-
-```bash
-deno run --allow-read --allow-env mod.ts --json
-```
-
-If you've cloned the repo, you can also use Deno tasks for the full dashboard:
-
-```bash
-deno task start       # Full dashboard (all permissions)
-deno task scan        # Lightweight CLI scan
-deno task scan:json   # JSON output
-```
-
 ### Node.js
 
 ```
@@ -103,8 +59,8 @@ $ npx agentlytics
 
 Looking for AI coding agents...
    ✓ Cursor              498 sessions
-   ✓ Windsurf             20 sessions
-   ✓ Windsurf Next        56 sessions
+   ✓ Devin                20 sessions
+   ✓ Devin Next           56 sessions
    ✓ Claude Code           6 sessions
    ✓ VS Code              23 sessions
    ✓ Zed                   1 session
@@ -211,7 +167,7 @@ The install script writes `/etc/hosts`, adds a `pf` rule forwarding `:80` → da
 - **Projects** — Per-project analytics: sessions, messages, tokens, models, editor breakdown, and drill-down detail views
 - **Deep Analysis** — Tool frequency heatmaps, model distribution, token breakdown, and filterable drill-down analytics
 - **Compare** — Side-by-side editor comparison with efficiency ratios, token usage, and session patterns
-- **Subscriptions** — Live view of your editor plans, usage quotas, remaining credits, and rate limits across Cursor, Windsurf, Claude Code, Copilot, Codex, and more
+- **Subscriptions** — Live view of your editor plans, usage quotas, remaining credits, and rate limits across Cursor, Devin, Claude Code, Copilot, Codex, and more
 - **Relay** — Share AI session context across your team via MCP
 
 ## Supported Editors
@@ -219,8 +175,8 @@ The install script writes `/etc/hosts`, adds a `pf` rule forwarding `:80` → da
 | Editor | Msgs | Tools | Models | Tokens |
 |--------|:----:|:-----:|:------:|:------:|
 | **Cursor** | ✅ | ✅ | ✅ | ✅ |
-| **Windsurf** | ✅ | ✅ | ✅ | ✅ |
-| **Windsurf Next** | ✅ | ✅ | ✅ | ✅ |
+| **Devin** | ✅ | ✅ | ✅ | ✅ |
+| **Devin Next** | ✅ | ✅ | ✅ | ✅ |
 | **Antigravity** | ✅ | ✅ | ✅ | ✅ |
 | **Claude Code** | ✅ | ✅ | ✅ | ✅ |
 | **VS Code** | ✅ | ✅ | ✅ | ✅ |
@@ -229,14 +185,14 @@ The install script writes `/etc/hosts`, adds a `pf` rule forwarding `:80` → da
 | **OpenCode** | ✅ | ✅ | ✅ | ✅ |
 | **Codex** | ✅ | ✅ | ✅ | ✅ |
 | **Gemini CLI** | ✅ | ✅ | ✅ | ✅ |
-| **Copilot CLI** | ✅ | ✅ | ✅ | ✅ |
+| **GitHub Copilot** | ✅ | ✅ | ✅ | ✅ |
 | **Cursor Agent** | ✅ | ❌ | ❌ | ❌ |
 | **Command Code** | ✅ | ✅ | ❌ | ❌ |
 | **Goose** | ✅ | ✅ | ✅ | ❌ |
 | **Kiro** | ✅ | ✅ | ✅ | ❌ |
 | **Codebuff** | ✅ | ✅ | ⚠️ | ⚠️ |
 
-> Windsurf, Windsurf Next, and Antigravity must be running during scan.
+> Devin, Devin Next, and Antigravity must be running during scan.
 
 ## Relay
 
@@ -322,11 +278,7 @@ Editor files/APIs → editors/*.js → cache.js (SQLite) → server.js (REST) �
 Relay:  join clients → POST /relay/sync → relay.db (SQLite) → MCP server → AI clients
 ```
 
-```
-Deno:   Editor files → mod.ts (zero deps) → stdout (CLI/JSON)
-```
-
-All data is normalized into a local SQLite cache at `~/.agentlytics/cache.db`. The Express server exposes read-only REST endpoints consumed by the React frontend. Relay data is stored separately in `~/.agentlytics/relay.db`. The Deno sandboxed edition (`mod.ts`) bypasses SQLite entirely and reads editor files directly for a lightweight, permission-minimal CLI report.
+All data is normalized into a local SQLite cache at `~/.agentlytics/cache.db`. The Express server exposes read-only REST endpoints consumed by the React frontend. Relay data is stored separately in `~/.agentlytics/relay.db`.
 
 ## API
 
@@ -346,7 +298,7 @@ All endpoints accept optional `editor` filter. See **[API.md](API.md)** for full
 
 ## Roadmap
 
-- [ ] **Offline Windsurf/Antigravity support** — Read cascade data from local file structure instead of requiring the app to be running (see below)
+- [ ] **Offline Devin/Antigravity support** — Read cascade data from local file structure instead of requiring the app to be running (see below)
 - [ ] **LLM-powered insights** — Use an LLM to analyze session patterns, generate summaries, detect coding habits, and surface actionable recommendations
 - [ ] **Linux & Windows support** — Adapt editor paths for non-macOS platforms
 - [ ] **Export & reports** — PDF/CSV export of analytics and session data
@@ -354,7 +306,7 @@ All endpoints accept optional `editor` filter. See **[API.md](API.md)** for full
 
 ## Contributions Needed
 
-**Windsurf / Windsurf Next / Antigravity offline reading** — Currently these editors require their app to be running because data is fetched via ConnectRPC from the language server process. Unlike Cursor or Claude Code, there's no known local file structure to read cascade history from. If you know where Windsurf stores trajectory data on disk, or can help reverse-engineer the storage format, contributions are very welcome.
+**Devin / Devin Next / Antigravity offline reading** — Currently these editors require their app to be running because data is fetched via ConnectRPC from the language server process. Unlike Cursor or Claude Code, there's no known local file structure to read cascade history from. Legacy Windsurf identifiers and `~/.windsurf` configuration are still supported for backwards compatibility.
 
 **LLM-based analytics** — We'd love to add intelligent analysis on top of the raw data — session summaries, coding pattern detection, productivity insights, and natural language queries over your agent history. If you have ideas or want to build this, open an issue or PR.
 

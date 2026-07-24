@@ -10,12 +10,38 @@
       "Z.ai": "docs.z.ai/guides/overview/pricing",
       "Zen": "opencode.ai/docs/zen/"
     },
-    "lastVerified": "2026-04",
+    "lastVerified": "2026-07",
     "notes": {
       "keys": "All keys use dashes instead of dots (e.g. gpt-5-4 not gpt-5.4) so normalizeModelName dots→dashes works",
       "cacheRead": "cache hit price (Anthropic: 0.1x input, OpenAI: varies, Google: ~0.1x input)",
-      "cacheWrite": "cache write price (Anthropic: 1.25x input, OpenAI: ~same as input)"
+      "cacheWrite": "cache write price (Anthropic: 1.25x input, OpenAI: ~same as input)",
+      "claude-sonnet-5": "ACTION REQUIRED 2026-09-01: currently set to Anthropic's introductory rate ($2/$10, valid through 2026-08-31). Standard rate from Sep 1 2026 is input 3, output 15, cacheRead 0.3, cacheWrite 3.75.",
+      "fastMode": "Fast mode (speed:'fast') on Opus 5 / 4.8 is billed at $10/$50 and on Opus 4.7 at $30/$150, but the model string is identical, so these entries price fast-mode traffic at standard rates."
     }
+  },
+  "claude-fable-5": {
+    "input": 10,
+    "output": 50,
+    "cacheRead": 1,
+    "cacheWrite": 12.5
+  },
+  "claude-mythos-5": {
+    "input": 10,
+    "output": 50,
+    "cacheRead": 1,
+    "cacheWrite": 12.5
+  },
+  "claude-opus-5": {
+    "input": 5,
+    "output": 25,
+    "cacheRead": 0.5,
+    "cacheWrite": 6.25
+  },
+  "claude-sonnet-5": {
+    "input": 2,
+    "output": 10,
+    "cacheRead": 0.2,
+    "cacheWrite": 2.5
   },
   "claude-opus-4-8": {
     "input": 5,

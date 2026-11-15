@@ -15,7 +15,7 @@ const MODELS_DEV_URL = 'https://models.dev/api.json';
 const PRICING_PATH = path.join(__dirname, 'pricing.json');
 
 // Providers we care about (others are either free or irrelevant)
-const PROVIDERS = ['anthropic', 'openai', 'google', 'xai', 'deepseek'];
+const PROVIDERS = ['anthropic', 'openai', 'google', 'xai', 'deepseek', 'minimax'];
 
 // ── Fetch models.dev/api.json ──────────────────────────────────
 function fetchModels() {

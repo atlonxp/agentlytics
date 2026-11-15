@@ -708,6 +708,15 @@ function getCachedChat(id) {
   };
 }
 
+// Distinct project folders only, without per-project stats or costs. Safe on the
+// startup path; getCachedProjects() runs a full cost breakdown per project and
+// must never sit in front of server.listen().
+function getProjectFolders(opts = {}) {
+  const hf = hiddenFolderFilter(opts);
+  return db.prepare(`SELECT DISTINCT folder FROM chats WHERE folder IS NOT NULL${hf.sql}`)
+    .all(...hf.params).map(r => r.folder);
+}
+
 function getCachedProjects(opts = {}) {
   // Build date filter
   let dateFilter = '';
@@ -1695,6 +1704,7 @@ module.exports = {
   getCachedDeepAnalytics,
   getCachedChat,
   getCachedProjects,
+  getProjectFolders,
   getCachedToolCalls,
   resetAndRescanAsync,
   forceRescanAsync,

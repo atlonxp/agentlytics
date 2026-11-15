@@ -503,8 +503,7 @@ let _mcpToolsCache = null; // { servers, serverToolResults, toolToServer, server
 async function initMcpToolsCache() {
   const { getAllMCPServers } = require('./editors');
   const { queryMcpServerTools } = require('./editors/base');
-  const projects = cache.getCachedProjects({ hiddenFolders: getHiddenFolders() });
-  const projectFolders = projects.map(p => p.folder).filter(Boolean);
+  const projectFolders = cache.getProjectFolders({ hiddenFolders: getHiddenFolders() });
 
   const servers = getAllMCPServers(projectFolders);
 

@@ -160,6 +160,13 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_chats_source ON chats(source);
     CREATE INDEX IF NOT EXISTS idx_chats_updated ON chats(last_updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
+    -- Covering index for every cost/token aggregate (estimateCosts,
+    -- computePerChatCosts): lets SQLite answer them from ~120 MB of index
+    -- instead of scanning the multi-GB messages table with its content text.
+    -- Without it /api/costs took ~13s cold and /api/projects ~30 min, all
+    -- synchronous, freezing the whole dashboard.
+    CREATE INDEX IF NOT EXISTS idx_messages_cost ON messages(chat_id, model, input_tokens, output_tokens, cache_read, cache_write);
+    CREATE INDEX IF NOT EXISTS idx_chats_folder ON chats(folder);
     CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name);
     CREATE INDEX IF NOT EXISTS idx_tool_calls_chat ON tool_calls(chat_id);
 
